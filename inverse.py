@@ -42,14 +42,35 @@ class Geometry:
             param_mins: Dict of minimum values for min-max scaling
             param_maxes: Dict of maximum values for min-max scaling
         """
-        self.cen_x: float = cen_x
-        self.cen_y: float = cen_y
-        self.cen_z: float = cen_z
-        self.length: float = length
-        self.height: float = height
-        self.cells: np.ndarray = cells
-        self.points: np.ndarray = points
+        # Map normalized parameters back to original values
+        def unnormalize(val, vmin, vmax):
+            return val * (vmax - vmin) + vmin
         
+        bound_min, bound_max = np.min(points, axis=0), np.max(points, axis=0)
+        bound_diff = bound_max - bound_min
+        r_max = (min(bound_diff[0], bound_diff[1]) / 2) * 0.99 # 1% less than the boundary
+        h_max = (bound_diff[2] / 2) * 0.99
+        
+        # Unnormalize the parameters
+        self.cen_x = unnormalize(cen_x, bound_min[0], bound_max[0])
+        self.cen_y = unnormalize(cen_y, bound_min[1], bound_max[1])
+        if cen_z is None:
+            self.cen_z = None
+        else:
+            self.cen_z = unnormalize(cen_z, bound_min[2], bound_max[2])
+        if length is None:
+            self.length = None
+        else:
+            self.length = unnormalize(length, 0, r_max)
+        if height is None:
+            self.height = None
+        else:
+            self.height = unnormalize(height, 0, h_max)
+
+        # Store the cells and points
+        self.cells = cells
+        self.points = points
+
     def circle(self) -> np.ndarray:
         """
         Get indices of cells inside the circle (2D) or cylinder (3D).
@@ -142,7 +163,19 @@ class LinearElasticity(Problem):
 
     def set_params(self, params): # params = [x, y, z, r, h]
         # Geometry class doesn't use 'flex_inds', but directly assigns 'theta' values to the cells
-        inner_domain = Geometry(params[0], params[1], params[2], 4.0, 0.6, 
+        
+        # Normalize r & h
+        def normalize(val, vmin, vmax):
+            return (val - vmin) / (vmax - vmin)
+        
+        bound_min, bound_max = np.min(self.fes[0].points, axis=0), np.max(self.fes[0].points, axis=0)
+        bound_diff = bound_max - bound_min
+        r_max = (min(bound_diff[0], bound_diff[1]) / 2) * 0.99
+        h_max = (bound_diff[2] / 2) * 0.99
+        length = normalize(4.0, 0, r_max)
+        height = normalize(0.6, 0, h_max)
+        
+        inner_domain = Geometry(params[0], params[1], params[2], length, height, 
                                 self.fes[0].cells, self.fes[0].points)
         full_params = inner_domain.circle()
         full_params = np.expand_dims(full_params, axis=1)
@@ -251,6 +284,9 @@ def consHandle(rho, epoch):
     c, gradc = c.reshape((1,)), gradc[None, ...]
     return c, gradc
 
+# Normalize r & h
+def normalize(val, vmin, vmax):
+    return (val - vmin) / (vmax - vmin)
 
 # Set the max/min for the design variables
 bound_min, bound_max = np.min(mesh.points, axis=0), np.max(mesh.points, axis=0)
@@ -261,11 +297,14 @@ y_bound = (bound_min[1], bound_max[1])
 z_bound = (bound_min[2], bound_max[2])
 r_bound = (0, (min(bound_diff[0], bound_diff[1]) / 2) * 0.99) # 1% less than the boundary
 h_bound = (0, (bound_diff[2] / 2) * 0.99)
-rho_ini = np.array([bound_sum[0] / 2, bound_sum[1] / 2, bound_sum[2] / 2])
+rho_ini = np.array([bound_sum[0] / 4, bound_sum[1] / 2, bound_sum[2] / 2])
+rho_ini_normalized = np.array([normalize(rho_ini[0], bound_min[0], bound_max[0]),
+                               normalize(rho_ini[1], bound_min[1], bound_max[1]),
+                               normalize(rho_ini[2], bound_min[2], bound_max[2])])
 
 # Optimization problem setting
 numConstraints = 1
-optimizationParams = {'maxiter':100, 'disp':True}
+optimizationParams = {'maxiter':100, 'disp':True} # 'ftol':1e-4
 start_time = time.time() # Start timing
 
 # Minimize the objective function
@@ -273,8 +312,9 @@ params = params + [rho_ini]
 save_sol(problem.fes[0], np.hstack(np.ones((len(sol_measured), 4))), 
          f'data/inverse/{file_name}/sol_000.vtu', 
          cell_infos=[('theta', np.ones(problem.fes[0].num_cells))])
-minimize(J_total, jac=J_grad, x0=rho_ini, 
-         bounds=[x_bound, y_bound, z_bound],
+minimize(J_total, jac=J_grad, x0=rho_ini_normalized, 
+        #  bounds=[(0, 1)] * len(rho_ini),
+         bounds=[(0.2, 0.6), (0, 1), (0, 1)],
          options=optimizationParams, method='L-BFGS-B', callback=output_sol)
 end_time = time.time() # End timing
 elapsed_time = end_time - start_time
