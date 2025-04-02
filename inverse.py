@@ -42,35 +42,13 @@ class Geometry:
             param_mins: Dict of minimum values for min-max scaling
             param_maxes: Dict of maximum values for min-max scaling
         """
-
-        # Map normalized parameters back to original values
-        def unnormalize(val, vmin, vmax):
-            return val * (vmax - vmin) + vmin
-        
-        bound_min, bound_max = np.min(points, axis=0), np.max(points, axis=0)
-        bound_diff = bound_max - bound_min
-        r_max = (min(bound_diff[0], bound_diff[1]) / 2) * 0.99 # 1% less than the boundary
-        h_max = (bound_diff[2] / 2) * 0.99
-
-        # Unnormalize the parameters
-        self.cen_x = unnormalize(cen_x, bound_min[0], bound_max[0])
-        self.cen_y = unnormalize(cen_y, bound_min[1], bound_max[1])
-        if cen_z is None:
-            self.cen_z = None
-        else:
-            self.cen_z = unnormalize(cen_z, bound_min[2], bound_max[2])
-        if length is None:
-            self.length = None
-        else:
-            self.length = unnormalize(length, 0, r_max)
-        if height is None:
-            self.height = None
-        else:
-            self.height = unnormalize(height, 0, h_max)
-
-        # Store the cells and points
-        self.cells = cells
-        self.points = points
+        self.cen_x: float = cen_x
+        self.cen_y: float = cen_y
+        self.cen_z: float = cen_z
+        self.length: float = length
+        self.height: float = height
+        self.cells: np.ndarray = cells
+        self.points: np.ndarray = points
         
     def circle(self) -> np.ndarray:
         """
@@ -87,7 +65,6 @@ class Geometry:
             # When r_squared < r_param: sigmoid ≈ 1 (inside)
             # When r_squared > r_param: sigmoid ≈ 0 (outside)
             point_indicators = jax.nn.sigmoid(k * (domain_squared - r_squared))
-            # point_indicators = np.round(point_indicators)
             
         else: # 3D  
             z_squared = (self.points[:, 2] - self.cen_z)**2
@@ -95,7 +72,6 @@ class Geometry:
             point_indicators = jax.nn.sigmoid(k * (domain_squared - r_squared))
             z_indicators = jax.nn.sigmoid(k * (z_squared - h_squared))
             # np.round() makes indifferentiable
-            # point_indicators, z_indicators = np.round(point_indicators), np.round(z_indicators)
             
             # point_indicators = 1 only if both are 1
             point_indicators = np.maximum(point_indicators, z_indicators)
@@ -114,14 +90,13 @@ class Geometry:
         
         domain_squared = (self.points[:,0] - self.cen_x)**2 + (self.points[:,1] - self.cen_y)**2
         r_squared = self.length ** 2
-        k = 100.0  # Controls transition sharpness
+        k = 50.0  # Controls transition sharpness
 
         # Find the indices of the points in the inner domain
         if is_2d: # 2D
             # When r_squared < r_param: sigmoid ≈ 1 (inside)
             # When r_squared > r_param: sigmoid ≈ 0 (outside)
             point_indicators = jax.nn.relu(domain_squared - r_squared)
-            # point_indicators = np.round(point_indicators)
             
         else: # 3D  
             z_squared = (self.points[:, 2] - self.cen_z)**2
@@ -129,7 +104,6 @@ class Geometry:
             point_indicators = jax.nn.relu(domain_squared - r_squared)
             z_indicators = jax.nn.relu(z_squared - h_squared)
             # np.round() makes indifferentiable
-            # point_indicators, z_indicators = np.round(point_indicators), np.round(z_indicators)
             
             # point_indicators = 1 only if both are 1
             point_indicators = np.maximum(point_indicators, z_indicators)
@@ -288,11 +262,6 @@ z_bound = (bound_min[2], bound_max[2])
 r_bound = (0, (min(bound_diff[0], bound_diff[1]) / 2) * 0.99) # 1% less than the boundary
 h_bound = (0, (bound_diff[2] / 2) * 0.99)
 rho_ini = np.array([bound_sum[0] / 2, bound_sum[1] / 2, bound_sum[2] / 2])
-rho_ini_normalized = np.array([(rho_ini[0] - bound_min[0]) / bound_diff[0],
-                               (rho_ini[1] - bound_min[1]) / bound_diff[1],
-                               (rho_ini[2] - bound_min[2]) / bound_diff[2],])
-                            #    rho_ini[3] / r_bound[1],
-                            #    rho_ini[4] / h_bound[1]])
 
 # Optimization problem setting
 numConstraints = 1
@@ -304,8 +273,8 @@ params = params + [rho_ini]
 save_sol(problem.fes[0], np.hstack(np.ones((len(sol_measured), 4))), 
          f'data/inverse/{file_name}/sol_000.vtu', 
          cell_infos=[('theta', np.ones(problem.fes[0].num_cells))])
-minimize(J_total, jac=J_grad, x0=rho_ini_normalized, 
-         bounds=[(0, 1)]*3,
+minimize(J_total, jac=J_grad, x0=rho_ini, 
+         bounds=[x_bound, y_bound, z_bound],
          options=optimizationParams, method='L-BFGS-B', callback=output_sol)
 end_time = time.time() # End timing
 elapsed_time = end_time - start_time
