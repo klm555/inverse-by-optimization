@@ -52,8 +52,8 @@ class Geometry:
         
         bound_min, bound_max = np.min(points, axis=0), np.max(points, axis=0)
         bound_diff = bound_max - bound_min
-        r_max = (min(bound_diff[0], bound_diff[1]) / 2) # 1% less than the boundary
-        h_max = (bound_diff[2] / 2)
+        r_max = (min(bound_diff[0], bound_diff[1]) / 2) * 0.99 # 1% less than the boundary
+        h_max = (bound_diff[2] / 2) * 0.99
         
         # Unnormalize the parameters
         self.cen_x = unnormalize(cen_x, bound_min[0], bound_max[0])
@@ -268,32 +268,33 @@ def normalize(val, vmin, vmax):
 
 # Set the max/min for the design variables
 bound_min, bound_max = np.min(mesh.points, axis=0), np.max(mesh.points, axis=0)
-x_points = np.linspace(bound_min[0], bound_max[0], 200)
+x_points = np.linspace(bound_min[0], bound_max[0], 100)
 
 count = 1
 outputs = []
 for x in x_points:
     rho = np.array([x])
     rho_normalized = normalize(rho, bound_min[0], bound_max[0])
+    
     output = J_total(rho_normalized)
     outputs.append(output)
     print(f"Iteration:{count}")
     count += 1
     
-x_center = np.array([(bound_min[0] + bound_max[0]) / 2])
-obj_0 = J_total(normalize(x_center, bound_min[0], bound_max[0]))
+x_center_normalized = np.array([0.5])
+obj_0 = J_total(x_center_normalized)
 
 # Plot the optimization results.
 obj = onp.array(outputs)
 plt.figure(1, figsize=(10, 8))
 plt.plot(onp.arange(len(obj)) + 1, obj, linestyle='-', linewidth=2, color='black')
 plt.axhline(y=obj_0, color='r', linestyle='--', label='J = %f' % obj_0)
-plt.xlabel(r"x-coordinate", fontsize=20)
+plt.xlabel(r"x coordinate", fontsize=20)
 plt.ylabel(r"Objective value", fontsize=20)
 plt.legend(fontsize=20)
 plt.tick_params(labelsize=20)
 plt.tick_params(labelsize=20)
-plt.title('Objective function w.r.t x-coordinate', fontsize=20)
+plt.title('Objective function w.r.t x coordinate', fontsize=20)
 # plt.title(rf'Initial Guess with $\theta = {vf}$', fontsize=20)
 
 save_dir = 'data/inverse/figures'
