@@ -26,7 +26,7 @@ import logging
 logger.setLevel(logging.DEBUG)
 
 # Load the measured displacement data
-sol_measured = onp.loadtxt('u_dogbone_0.01_any.txt') # (number of nodes, 3) for 3D case
+sol_measured = onp.loadtxt('../u_dogbone_0.01_any.txt') # (number of nodes, 3) for 3D case
 
 # Create inner domain (differentiable)
 class Geometry:
@@ -248,7 +248,7 @@ cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
 dim = 3
 
 # Create meshes using meshio : 3rd party library
-msh_file = 'Dogbone_0.01.msh'
+msh_file = '../Dogbone_0.01.msh'
 meshio_mesh = meshio.read(msh_file)
 # Input mesh info into Mesh class
 mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
@@ -296,6 +296,9 @@ def J_total(params):
     # l2_reg_term = lambda_reg * np.linalg.norm(u_grad)**2 # l2 regularization
     TV_reg_term = lambda_reg * np.linalg.norm(u_grad)**2 # TV regularization
     J: float = 0.5 * np.linalg.norm(u_difference)**2 + 0.5 * TV_reg_term
+    vtu_path = "../data/local_min_test/sol_%03d.vtu" % count
+    save_sol(problem.fes[0], np.hstack((sol_list[0], np.zeros((len(sol_list[0]), 1)))), 
+             vtu_path, cell_infos=[('theta', problem.full_params[:, 0].reshape(-1))])
     return J
 
 def J_grad(rho):
@@ -312,7 +315,7 @@ def normalize(val, vmin, vmax):
 
 # Set the max/min for the design variables
 bound_min, bound_max = np.min(mesh.points, axis=0), np.max(mesh.points, axis=0)
-x_points = np.linspace(bound_min[0], bound_max[0], 100)
+x_points = np.linspace(bound_min[0], bound_max[0], 200)
 
 count = 1
 outputs = []
@@ -335,7 +338,6 @@ plt.axhline(y=obj_0, color='r', linestyle='--', label='J = %f' % obj_0)
 plt.axvline(x=x_center, color='r', linestyle='--', label='x = %f' % x_center[0])
 plt.xlabel(r"x-coordinate", fontsize=20)
 plt.ylabel(r"Objective value", fontsize=20)
-plt.ylim(0, 1.5)
 plt.legend(fontsize=20)
 plt.tick_params(labelsize=20)
 plt.tick_params(labelsize=20)
@@ -344,6 +346,6 @@ plt.title('Objective function w.r.t x-coordinate', fontsize=20)
 
 save_dir = 'data/inverse/figures'
 os.makedirs(save_dir, exist_ok=True)  # Create directory if it doesn't exist
-plt.savefig('data/inverse/figures/local_min_test.png', dpi=300, bbox_inches='tight')
+plt.savefig('../data/inverse/figures/local_min_test_sigmoid.png', dpi=300, bbox_inches='tight')
 # plt.show()
-onp.savetxt('data/inverse/figures/local_min_test.txt', obj)
+onp.savetxt('../data/inverse/figures/local_min_test.txt', obj)
