@@ -3,7 +3,6 @@
 # try make J to be very large 10**8
 # check whether the gradient sign changes
 # show more evidence if you convince it is local minimum!
-# Try to  fix both sides(No Neumann BC)
 
 import os
 import time
@@ -237,11 +236,11 @@ class LinearElasticity(Problem):
     #     self.internal_vars = [thetas]
 
     # Traction
-    def get_surface_maps(self):
-        def surface_map(u, x):
-            # Traction components in each direction
-            return np.array([-15., 0., 0.])
-        return [surface_map]
+    # def get_surface_maps(self):
+    #     def surface_map(u, x):
+    #         # Traction components in each direction
+    #         return np.array([-15., 0., 0.])
+    #     return [surface_map]
     
 # Mesh info
 ele_type = 'TET4'
@@ -268,7 +267,7 @@ def zero_dirichlet_val(point):
 # Dirichlet boundary info
 # [plane, direction, displacement]
 # number of elements in plane, direction, displacement should match
-dirichlet_bc_info = [[left] * 3, [0, 1, 2], [zero_dirichlet_val] * 3]
+dirichlet_bc_info = [[left]*3 + [right]*3, [0, 1, 2]*2, [zero_dirichlet_val] * 6]
 
 # Neumann boundary locations
 location_fns = [right]
@@ -278,8 +277,8 @@ problem = LinearElasticity(mesh,
                            vec=3,
                            dim=3,
                            ele_type=ele_type,
-                           dirichlet_bc_info=dirichlet_bc_info,
-                           location_fns=location_fns)
+                           dirichlet_bc_info=dirichlet_bc_info,)
+                           # location_fns=location_fns)
 
 ##################################################################
 # Apply the automatic differentiation wrapper.
