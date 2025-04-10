@@ -13,10 +13,10 @@ import meshio
 import logging
 logger.setLevel(logging.DEBUG)
 
-file_name = 'test'
+file_name = 'u_dogbone_0.01_any_both_fixed'
 
 # Inner domain (soft material)
-E_inner = 1.0e-2
+E_inner = 1.0e-3
 
 # Outer domain (hard material)
 E_outer = 2.35e3
@@ -124,7 +124,7 @@ class Geometry:
                                  (self.points[:,1] >= bottom) & (self.points[:,1] <= top) &
                                  (self.points[:,2] >= z_bot) & (self.points[:,2] <= z_top))[0]
         # Find the indices of the cells in the inner domain
-        domain_cells = np.all(np.isin(self.cells, domain_points), axis=1)
+        domain_cells = np.any(np.isin(self.cells, domain_points), axis=1)
         flex_inds = np.where(domain_cells)[0]
 
         return flex_inds # array of shape (n,)
