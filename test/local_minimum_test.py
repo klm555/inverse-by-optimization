@@ -3,6 +3,7 @@
 # try make J to be very large 10**8
 # check whether the gradient sign changes
 # show more evidence if you convince it is local minimum!
+# Try to  fix both sides(No Neumann BC)
 
 import os
 import time
@@ -297,8 +298,8 @@ def J_total(params):
     TV_reg_term = lambda_reg * np.linalg.norm(u_grad)**2 # TV regularization
     J: float = 0.5 * np.linalg.norm(u_difference)**2 + 0.5 * TV_reg_term
     vtu_path = "../data/local_min_test/sol_%03d.vtu" % count
-    save_sol(problem.fes[0], np.hstack((sol_list[0], np.zeros((len(sol_list[0]), 1)))), 
-             vtu_path, cell_infos=[('theta', problem.full_params[:, 0].reshape(-1))])
+    save_sol(problem.fes[0], sol_list[0], vtu_path, 
+             cell_infos=[('theta', problem.full_params[:, 0].reshape(-1))])
     return J
 
 def J_grad(rho):
