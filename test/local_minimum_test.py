@@ -334,6 +334,7 @@ obj_0 = J_total(normalize(x_center, bound_min[0], bound_max[0]))
 obj = onp.array(outputs)
 plt.figure(1, figsize=(10, 8))
 plt.plot(x_points, obj, linestyle='-', linewidth=2, color='black')
+plt.scatter(x_points, obj, color='black', s=10)
 plt.axhline(y=obj_0, color='r', linestyle='--', label='J = %f' % obj_0)
 plt.axvline(x=x_center, color='r', linestyle='--', label='x = %f' % x_center[0])
 plt.xlabel(r"x-coordinate", fontsize=20)
@@ -346,6 +347,6 @@ plt.title('Objective function w.r.t x-coordinate', fontsize=20)
 
 save_dir = 'data/inverse/figures'
 os.makedirs(save_dir, exist_ok=True)  # Create directory if it doesn't exist
-plt.savefig('../data/inverse/figures/local_min_test_sigmoid.png', dpi=300, bbox_inches='tight')
+plt.savefig(os.path.join(save_dir, 'local_min_test_sigmoid.png'), dpi=300, bbox_inches='tight')
 # plt.show()
-onp.savetxt('../data/inverse/figures/local_min_test.txt', obj)
+onp.savetxt(os.path.join(save_dir, 'local_min_test.txt'), obj)
