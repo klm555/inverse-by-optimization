@@ -24,6 +24,7 @@ import meshio
 
 import logging
 logger.setLevel(logging.DEBUG)
+start_time = time.time()
 
 # Load the measured displacement data
 sol_measured = onp.loadtxt('../u_dogbone_0.01_any.txt') # (number of nodes, 3) for 3D case
@@ -178,32 +179,6 @@ class LinearElasticity(Problem):
             return sigma
         return stress
 
-    def set_params(self, params): # params = [x, y, z, r, h]
-        # Geometry class doesn't use 'flex_inds', but directly assigns 'theta' values to the cells
-        
-        # Normalize r & h
-        def normalize(val, vmin, vmax):
-            return (val - vmin) / (vmax - vmin)
-        
-        bound_min, bound_max = np.min(self.fes[0].points, axis=0), np.max(self.fes[0].points, axis=0)
-        bound_diff = bound_max - bound_min
-        bound_sum = bound_max + bound_min
-        r_max = (min(bound_diff[0], bound_diff[1]) / 2)
-        h_max = (bound_diff[2] / 2)
-        y = normalize((bound_min[1] + bound_max[1]) / 2, bound_min[1], bound_max[1])
-        z = normalize((bound_min[2] + bound_max[2]) / 2, bound_min[2], bound_max[2])
-        length = normalize(4.0, 0, r_max)
-        height = normalize(0.6, 0, h_max)
-        
-        inner_domain = Geometry(params[0], y, z, length, height, 
-                                self.fes[0].cells, self.fes[0].points)
-        full_params = inner_domain.circle()
-        full_params = np.expand_dims(full_params, axis=1)
-        thetas = np.repeat(full_params[:, None, :], self.fes[0].num_quads, axis=1)
-        self.params = params
-        self.full_params = full_params
-        self.internal_vars = [thetas]
-
     # def set_params(self, params): # params = [x, y, z, r, h]
     #     # Geometry class doesn't use 'flex_inds', but directly assigns 'theta' values to the cells
         
@@ -220,27 +195,53 @@ class LinearElasticity(Problem):
     #     z = normalize((bound_min[2] + bound_max[2]) / 2, bound_min[2], bound_max[2])
     #     length = normalize(4.0, 0, r_max)
     #     height = normalize(0.6, 0, h_max)
-
+        
     #     inner_domain = Geometry(params[0], y, z, length, height, 
     #                             self.fes[0].cells, self.fes[0].points)
-    #     flex_inds = inner_domain.circle_forward()
-        
-    #     # Create an array of size (num_cells, 1)
-    #     full_params = np.ones((problem.num_cells, 1))
-    #     # Assign the elastic modulus "E_in" to the cells with flex_inds
-    #     full_params = full_params.at[flex_inds].set(0.)
+    #     full_params = inner_domain.circle()
     #     full_params = np.expand_dims(full_params, axis=1)
     #     thetas = np.repeat(full_params[:, None, :], self.fes[0].num_quads, axis=1)
     #     self.params = params
     #     self.full_params = full_params
     #     self.internal_vars = [thetas]
 
+    def set_params(self, params): # params = [x, y, z, r, h]
+        # Geometry class doesn't use 'flex_inds', but directly assigns 'theta' values to the cells
+        
+        # Normalize r & h
+        def normalize(val, vmin, vmax):
+            return (val - vmin) / (vmax - vmin)
+        
+        bound_min, bound_max = np.min(self.fes[0].points, axis=0), np.max(self.fes[0].points, axis=0)
+        bound_diff = bound_max - bound_min
+        bound_sum = bound_max + bound_min
+        r_max = (min(bound_diff[0], bound_diff[1]) / 2)
+        h_max = (bound_diff[2] / 2)
+        y = normalize((bound_min[1] + bound_max[1]) / 2, bound_min[1], bound_max[1])
+        z = normalize((bound_min[2] + bound_max[2]) / 2, bound_min[2], bound_max[2])
+        length = normalize(4.0, 0, r_max)
+        height = normalize(0.6, 0, h_max)
+
+        inner_domain = Geometry(params[0], y, z, length, height, 
+                                self.fes[0].cells, self.fes[0].points)
+        flex_inds = inner_domain.circle_forward()
+        
+        # Create an array of size (num_cells, 1)
+        full_params = np.ones((problem.num_cells, 1))
+        # Assign the elastic modulus "E_in" to the cells with flex_inds
+        full_params = full_params.at[flex_inds].set(0.)
+        full_params = np.expand_dims(full_params, axis=1)
+        thetas = np.repeat(full_params[:, None, :], self.fes[0].num_quads, axis=1)
+        self.params = params
+        self.full_params = full_params
+        self.internal_vars = [thetas]
+
     # Traction
-    # def get_surface_maps(self):
-    #     def surface_map(u, x):
-    #         # Traction components in each direction
-    #         return np.array([-15., 0., 0.])
-    #     return [surface_map]
+    def get_surface_maps(self):
+        def surface_map(u, x):
+            # Traction components in each direction
+            return np.array([-15., 0., 0.])
+        return [surface_map]
     
 # Mesh info
 ele_type = 'TET4'
@@ -267,7 +268,7 @@ def zero_dirichlet_val(point):
 # Dirichlet boundary info
 # [plane, direction, displacement]
 # number of elements in plane, direction, displacement should match
-dirichlet_bc_info = [[left]*3 + [right]*3, [0, 1, 2]*2, [zero_dirichlet_val] * 6]
+dirichlet_bc_info = [[left] * 3, [0, 1, 2], [zero_dirichlet_val] * 3]
 
 # Neumann boundary locations
 location_fns = [right]
@@ -277,8 +278,8 @@ problem = LinearElasticity(mesh,
                            vec=3,
                            dim=3,
                            ele_type=ele_type,
-                           dirichlet_bc_info=dirichlet_bc_info,)
-                           # location_fns=location_fns)
+                           dirichlet_bc_info=dirichlet_bc_info,
+                           location_fns=location_fns)
 
 ##################################################################
 # Apply the automatic differentiation wrapper.
@@ -347,6 +348,9 @@ plt.title('Objective function w.r.t x-coordinate', fontsize=20)
 
 save_dir = 'data/inverse/figures'
 os.makedirs(save_dir, exist_ok=True)  # Create directory if it doesn't exist
-plt.savefig(os.path.join(save_dir, 'local_min_test_sigmoid.png'), dpi=300, bbox_inches='tight')
+plt.savefig(os.path.join(save_dir, 'local_min_test_forward.png'), dpi=300, bbox_inches='tight')
 # plt.show()
 onp.savetxt(os.path.join(save_dir, 'local_min_test.txt'), obj)
+
+end_time = time.time()
+print('Total running time : %f secs' % (end_time - start_time))
