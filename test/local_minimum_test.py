@@ -4,6 +4,11 @@
 # check whether the gradient sign changes
 # show more evidence if you convince it is local minimum!
 
+# need to be symmetric(same dirichlet in opposite)
+# do many cases() -> average
+# box shaped geometry with symmmetric meshes
+# can be the problem of the mesh
+
 import os
 import time
 from typing import List
@@ -28,6 +33,10 @@ start_time = time.time()
 
 # Load the measured displacement data
 sol_measured = onp.loadtxt('../u_dogbone_0.01_any.txt') # (number of nodes, 3) for 3D case
+
+# Save directory
+save_dir = '../data/local_min_test/2_nonzero_dirichlet'
+os.makedirs(save_dir, exist_ok=True)
 
 # Create inner domain (differentiable)
 class Geometry:
@@ -237,11 +246,11 @@ class LinearElasticity(Problem):
         self.internal_vars = [thetas]
 
     # Traction
-    def get_surface_maps(self):
-        def surface_map(u, x):
-            # Traction components in each direction
-            return np.array([-15., 0., 0.])
-        return [surface_map]
+    # def get_surface_maps(self):
+    #     def surface_map(u, x):
+    #         # Traction components in each direction
+    #         return np.array([-15., 0., 0.])
+    #     return [surface_map]
     
 # Mesh info
 ele_type = 'TET4'
@@ -262,13 +271,17 @@ def right(point):
     return np.isclose(point[0], np.max(mesh.points, axis=0)[0], atol=1e-5) # True for x = Lx
 
 # Dirichlet boundary values
+# in the direction normal to the boundary("1": tension, "-1": compression)
 def zero_dirichlet_val(point):
     return 0.
+
+def one_dirichlet_val(point):
+    return 1.
 
 # Dirichlet boundary info
 # [plane, direction, displacement]
 # number of elements in plane, direction, displacement should match
-dirichlet_bc_info = [[left] * 3, [0, 1, 2], [zero_dirichlet_val] * 3]
+dirichlet_bc_info = [[left]*6, [0, 1, 2]*2, [zero_dirichlet_val]*3 + [one_dirichlet_val]*3]
 
 # Neumann boundary locations
 location_fns = [right]
@@ -278,8 +291,8 @@ problem = LinearElasticity(mesh,
                            vec=3,
                            dim=3,
                            ele_type=ele_type,
-                           dirichlet_bc_info=dirichlet_bc_info,
-                           location_fns=location_fns)
+                           dirichlet_bc_info=dirichlet_bc_info)
+                        #    location_fns=location_fns)
 
 ##################################################################
 # Apply the automatic differentiation wrapper.
@@ -297,8 +310,8 @@ def J_total(params):
     # l2_reg_term = lambda_reg * np.linalg.norm(u_grad)**2 # l2 regularization
     TV_reg_term = lambda_reg * np.linalg.norm(u_grad)**2 # TV regularization
     J: float = 0.5 * np.linalg.norm(u_difference)**2 + 0.5 * TV_reg_term
-    vtu_path = "../data/local_min_test/sol_%03d.vtu" % count
-    save_sol(problem.fes[0], sol_list[0], vtu_path, 
+    vtu_name = "sol_%03d.vtu" % count
+    save_sol(problem.fes[0], sol_list[0], os.path.join(save_dir, vtu_name), 
              cell_infos=[('theta', problem.full_params[:, 0].reshape(-1))])
     return J
 
@@ -344,13 +357,9 @@ plt.legend(fontsize=20)
 plt.tick_params(labelsize=20)
 plt.tick_params(labelsize=20)
 plt.title('Objective function w.r.t x-coordinate', fontsize=20)
-# plt.title(rf'Initial Guess with $\theta = {vf}$', fontsize=20)
 
-save_dir = 'data/inverse/figures'
-os.makedirs(save_dir, exist_ok=True)  # Create directory if it doesn't exist
+# Save
 plt.savefig(os.path.join(save_dir, 'local_min_test_forward.png'), dpi=300, bbox_inches='tight')
-# plt.show()
-onp.savetxt(os.path.join(save_dir, 'local_min_test.txt'), obj)
 
 end_time = time.time()
 print('Total running time : %f secs' % (end_time - start_time))
