@@ -31,9 +31,9 @@ import logging
 logger.setLevel(logging.DEBUG)
 
 # Save setup
-file_dir = '../data/local_min_test/2_nonzero_dirichlet'
+file_dir = '../data/local_min_test/one_nonzero_dirichlet'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'local_min_test_forward'
+file_name = 'one_nonzero_dirichlet'
 
 # Load data (measured displacement)
 sol_measured = onp.loadtxt('../u_dogbone_0.01_any.txt') # (number of nodes, 3) in 3D
@@ -43,7 +43,7 @@ ele_type = 'TET4'
 cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
 dim = 3
 # Meshes
-msh_file = 'Dogbone_0.01.msh'
+msh_file = '../Dogbone_0.01.msh'
 meshio_mesh = meshio.read(msh_file) # meshio : 3rd party library
 mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
@@ -146,10 +146,10 @@ class LinearElasticity(Problem):
             return sigma
         return stress
 
-    def get_surface_maps(self):
-        def surface_map(u, x): # traction
-            return np.array([-15., 0., 0.]) # tr_x = -15 ((-): tension, (+): compression)
-        return [surface_map]
+    # def get_surface_maps(self):
+    #     def surface_map(u, x): # traction
+    #         return np.array([-15., 0., 0.]) # tr_x = -15 ((-): tension, (+): compression)
+    #     return [surface_map]
 
     def set_params(self, params): # params = [x, y, z, r, h]        
         # (temp) Fix parameters except "x" coord
@@ -196,12 +196,15 @@ def zero_dirichlet_val(point):
 def one_dirichlet_val(point):
     return 1.
 
+def minus_one_dirichlet_val(point):
+    return -1.
+
 # Dirichlet boundary info
 # [plane, direction, displacement]
 # number of elements in plane, direction, displacement should match
 dirichlet_bc_info = [[left]*3 + [right]*3, 
                      [0, 1, 2]*2, 
-                     [zero_dirichlet_val]*3 + [one_dirichlet_val]*3]
+                     [zero_dirichlet_val]*3 + [one_dirichlet_val] + [zero_dirichlet_val]*2]
 
 # Neumann boundary locations
 location_fns = [right]
