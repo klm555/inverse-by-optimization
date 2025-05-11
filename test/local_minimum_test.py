@@ -29,14 +29,30 @@ import meshio
 
 import logging
 logger.setLevel(logging.DEBUG)
-start_time = time.time()
 
-# Load the measured displacement data
-sol_measured = onp.loadtxt('../u_dogbone_0.01_any.txt') # (number of nodes, 3) for 3D case
+# Save setup
+file_dir = '../data/local_min_test/2_nonzero_dirichlet'
+os.makedirs(file_dir, exist_ok=True)
+file_name = 'local_min_test_forward'
 
-# Save directory
-save_dir = '../data/local_min_test/2_nonzero_dirichlet'
-os.makedirs(save_dir, exist_ok=True)
+# Load data (measured displacement)
+sol_measured = onp.loadtxt('../u_dogbone_0.01_any.txt') # (number of nodes, 3) in 3D
+
+# Mesh info
+ele_type = 'TET4'
+cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
+dim = 3
+# Meshes
+msh_file = 'Dogbone_0.01.msh'
+meshio_mesh = meshio.read(msh_file) # meshio : 3rd party library
+mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
+
+# Helper function for normalizing parameters
+def normalize(val, vmin, vmax): # original params -> normalized params
+    return (val - vmin) / (vmax - vmin)
+
+def unnormalize(val, vmin, vmax): # normalized params -> original params
+    return val * (vmax - vmin) + vmin
 
 # Create inner domain (differentiable)
 class Geometry:
@@ -53,122 +69,64 @@ class Geometry:
             height: Height of the cylinder or the cube (3D only)
             cells: Mesh cells
             points: Mesh points
-            param_mins: Dict of minimum values for min-max scaling
-            param_maxes: Dict of maximum values for min-max scaling
         """
-        # Map normalized parameters back to original values
-        def unnormalize(val, vmin, vmax):
-            return val * (vmax - vmin) + vmin
-        
         bound_min, bound_max = np.min(points, axis=0), np.max(points, axis=0)
         bound_diff = bound_max - bound_min
-        r_max = (min(bound_diff[0], bound_diff[1]) / 2) # 1% less than the boundary
-        h_max = (bound_diff[2] / 2)
+        r_max = min(bound_diff[0], bound_diff[1]) * 0.5 * 0.99 # 1% less than the boundary
+        h_max = bound_diff[2] * 0.5 * 0.99
         
         # Unnormalize the parameters
         self.cen_x = unnormalize(cen_x, bound_min[0], bound_max[0])
         self.cen_y = unnormalize(cen_y, bound_min[1], bound_max[1])
-        if cen_z is None:
-            self.cen_z = None
-        else:
-            self.cen_z = unnormalize(cen_z, bound_min[2], bound_max[2])
-        if length is None:
-            self.length = None
-        else:
-            self.length = unnormalize(length, 0, r_max)
-        if height is None:
-            self.height = None
-        else:
-            self.height = unnormalize(height, 0, h_max)
+        self.cen_z = None if cen_z is None else unnormalize(cen_z, bound_min[2], bound_max[2])
+        self.length = None if length is None else unnormalize(length, 0, r_max)
+        self.height = None if height is None else unnormalize(height, 0, h_max)
 
-        # Store the cells and points
+        # Store data
         self.cells = cells
         self.points = points
 
-    def circle_forward(self) -> np.ndarray:
-        # Set the edges of the square
+    def circle(self) -> np.ndarray:
+        # Height
         z_bot, z_top = self.cen_z - self.height, self.cen_z + self.height
-        # Find the indices of the points in the inner domain(x**2 + y**2 <= r**2) & (abs(z) <= h)            
+        # Indices of the points in the inner domain (x**2 + y**2 <= r**2) & (abs(z) <= h)            
         domain_points = np.where(((self.points[:,0] - self.cen_x)**2 +
                                   (self.points[:,1] - self.cen_y)**2 <= self.length ** 2) &
                                  (self.points[:,2] >= z_bot) & (self.points[:,2] <= z_top))[0]
-        # Find the indices of the cells in the inner domain
+        # Indices of the cells
         domain_cells = np.any(np.isin(self.cells, domain_points), axis=1)
-        flex_inds = np.where(domain_cells)[0]
-        
+        flex_inds = np.where(domain_cells)[0]    
         return flex_inds # array of shape (n,)
 
-    def circle(self) -> np.ndarray:
-        """
-        Get indices of cells inside the circle (2D) or cylinder (3D).
-        """
-        is_2d = self.cen_z == None
-        
+    def circle_sigmoid(self) -> np.ndarray:       
+        # Sharpness for sigmoid
+        k = 1.0
+        # Squared distances
         domain_squared = (self.points[:,0] - self.cen_x)**2 + (self.points[:,1] - self.cen_y)**2
         r_squared = self.length ** 2
-        k = 1.0  # Controls transition sharpness
+        z_squared = None if is_2d is None else (self.points[:,2] - self.cen_z)**2
+        h_squared = None if is_2d is None else self.height ** 2
 
-        # Find the indices of the points in the inner domain
-        if is_2d: # 2D
-            # When r_squared < r_param: sigmoid ≈ 1 (inside)
-            # When r_squared > r_param: sigmoid ≈ 0 (outside)
-            point_indicators = jax.nn.sigmoid(k * (domain_squared - r_squared))
-            
-        else: # 3D  
-            z_squared = (self.points[:, 2] - self.cen_z)**2
-            h_squared = self.height ** 2
-            point_indicators = jax.nn.sigmoid(k * (domain_squared - r_squared))
-            z_indicators = jax.nn.sigmoid(k * (z_squared - h_squared))
-            # np.round() makes indifferentiable
-            
-            # point_indicators = 1 only if both are 1
-            point_indicators = np.maximum(point_indicators, z_indicators)
-
-        # Find the point_indicators by the indices stored in the cells
-        cell_indicators = point_indicators[self.cells] # Assign point indicators by cell indices
-        # cell_indicators = 1 only if all points are 1
-        cell_indicators = np.prod(cell_indicators, axis=1)
-        return cell_indicators # array of shape (n,)
-    
-    def circle_relu(self) -> np.ndarray:
-        """
-        Get indices of cells inside the circle (2D) or cylinder (3D).
-        """
+        # Point indices
         is_2d = self.cen_z == None
-        
-        domain_squared = (self.points[:,0] - self.cen_x)**2 + (self.points[:,1] - self.cen_y)**2
-        r_squared = self.length ** 2
-        k = 50.0  # Controls transition sharpness
 
-        # Find the indices of the points in the inner domain
         if is_2d: # 2D
-            # When r_squared < r_param: sigmoid ≈ 1 (inside)
-            # When r_squared > r_param: sigmoid ≈ 0 (outside)
-            point_indicators = jax.nn.relu(domain_squared - r_squared)
-            
+            point_indicators = jax.nn.sigmoid(k * (domain_squared - r_squared)) # (+): outside, (-): inside  
         else: # 3D  
-            z_squared = (self.points[:, 2] - self.cen_z)**2
-            h_squared = self.height ** 2
-            point_indicators = jax.nn.relu(domain_squared - r_squared)
-            z_indicators = jax.nn.relu(z_squared - h_squared)
-            # np.round() makes indifferentiable
-            
-            # point_indicators = 1 only if both are 1
+            point_indicators = jax.nn.sigmoid(k * (domain_squared - r_squared))
+            z_indicators = jax.nn.sigmoid(k * (z_squared - h_squared))            
+            # Choose maximum sigmoid value
             point_indicators = np.maximum(point_indicators, z_indicators)
 
-        # Find the point_indicators by the indices stored in the cells
-        cell_indicators = point_indicators[self.cells] # Assign point indicators by cell indices
-        # cell_indicators = 1 only if all points are 1
-        cell_indicators = np.prod(cell_indicators, axis=1)
-        cell_indicators = jax.nn.sigmoid(cell_indicators)
-        return cell_indicators # array of shape (n,)
+        # Cell indices cell (cell_indicators = [point1_indicators, point2_indicators, point3_indicators, point4_indicators])
+        cell_indicators = point_indicators[self.cells] # Assign point indicators to cell indicators
+        cell_indicators = np.prod(cell_indicators, axis=1) # "1" if all points are 1
+        return cell_indicators # array (n,)
 
 # Weak forms
 class LinearElasticity(Problem):
     def custom_init(self): # TODO: integrate geometry with this?
-            # self.fes[0].flex_inds : indices of the inner domain cells
-            # Set up 'self.fes[0].flex_inds' to create the inner domain
-            self.fes[0].flex_inds = np.arange(len(self.fes[0].cells))
+            self.fes[0].flex_inds = np.arange(len(self.fes[0].cells)) # "flex_inds" : idx of the inner domain cells
             
     # Tensor
     def get_tensor_map(self):
@@ -188,42 +146,15 @@ class LinearElasticity(Problem):
             return sigma
         return stress
 
-    # def set_params(self, params): # params = [x, y, z, r, h]
-    #     # Geometry class doesn't use 'flex_inds', but directly assigns 'theta' values to the cells
-        
-    #     # Normalize r & h
-    #     def normalize(val, vmin, vmax):
-    #         return (val - vmin) / (vmax - vmin)
-        
-    #     bound_min, bound_max = np.min(self.fes[0].points, axis=0), np.max(self.fes[0].points, axis=0)
-    #     bound_diff = bound_max - bound_min
-    #     bound_sum = bound_max + bound_min
-    #     r_max = (min(bound_diff[0], bound_diff[1]) / 2)
-    #     h_max = (bound_diff[2] / 2)
-    #     y = normalize((bound_min[1] + bound_max[1]) / 2, bound_min[1], bound_max[1])
-    #     z = normalize((bound_min[2] + bound_max[2]) / 2, bound_min[2], bound_max[2])
-    #     length = normalize(4.0, 0, r_max)
-    #     height = normalize(0.6, 0, h_max)
-        
-    #     inner_domain = Geometry(params[0], y, z, length, height, 
-    #                             self.fes[0].cells, self.fes[0].points)
-    #     full_params = inner_domain.circle()
-    #     full_params = np.expand_dims(full_params, axis=1)
-    #     thetas = np.repeat(full_params[:, None, :], self.fes[0].num_quads, axis=1)
-    #     self.params = params
-    #     self.full_params = full_params
-    #     self.internal_vars = [thetas]
+    def get_surface_maps(self):
+        def surface_map(u, x): # traction
+            return np.array([-15., 0., 0.]) # tr_x = -15 ((-): tension, (+): compression)
+        return [surface_map]
 
-    def set_params(self, params): # params = [x, y, z, r, h]
-        # Geometry class doesn't use 'flex_inds', but directly assigns 'theta' values to the cells
-        
-        # Normalize r & h
-        def normalize(val, vmin, vmax):
-            return (val - vmin) / (vmax - vmin)
-        
+    def set_params(self, params): # params = [x, y, z, r, h]        
+        # (temp) Fix parameters except "x" coord
         bound_min, bound_max = np.min(self.fes[0].points, axis=0), np.max(self.fes[0].points, axis=0)
         bound_diff = bound_max - bound_min
-        bound_sum = bound_max + bound_min
         r_max = (min(bound_diff[0], bound_diff[1]) / 2)
         h_max = (bound_diff[2] / 2)
         y = normalize((bound_min[1] + bound_max[1]) / 2, bound_min[1], bound_max[1])
@@ -231,37 +162,24 @@ class LinearElasticity(Problem):
         length = normalize(4.0, 0, r_max)
         height = normalize(0.6, 0, h_max)
 
-        inner_domain = Geometry(params[0], y, z, length, height, 
-                                self.fes[0].cells, self.fes[0].points)
-        flex_inds = inner_domain.circle_forward()
+        # Inner domain indices
+        inner_domain = Geometry(params[0], y, z, 
+                                length, height, 
+                                self.fes[0].cells, 
+                                self.fes[0].points)
+        flex_inds = inner_domain.circle()
         
-        # Create an array of size (num_cells, 1)
-        full_params = np.ones((problem.num_cells, 1))
-        # Assign the elastic modulus "E_in" to the cells with flex_inds
-        full_params = full_params.at[flex_inds].set(0.)
+        # Assign density(0/1) to entire domain
+        full_params = np.ones((problem.num_cells, 1)) # (num_cells, 1)
+        full_params = full_params.at[flex_inds].set(0.) # assign "0" to the cells with "flex_inds"
         full_params = np.expand_dims(full_params, axis=1)
+
+        # Match "full_params" to the number of quadrature points
         thetas = np.repeat(full_params[:, None, :], self.fes[0].num_quads, axis=1)
+        
         self.params = params
         self.full_params = full_params
         self.internal_vars = [thetas]
-
-    # Traction
-    # def get_surface_maps(self):
-    #     def surface_map(u, x):
-    #         # Traction components in each direction
-    #         return np.array([-15., 0., 0.])
-    #     return [surface_map]
-    
-# Mesh info
-ele_type = 'TET4'
-cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
-dim = 3
-
-# Create meshes using meshio : 3rd party library
-msh_file = '../Dogbone_0.01.msh'
-meshio_mesh = meshio.read(msh_file)
-# Input mesh info into Mesh class
-mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
 # Boundary Locations
 def left(point):
@@ -281,12 +199,14 @@ def one_dirichlet_val(point):
 # Dirichlet boundary info
 # [plane, direction, displacement]
 # number of elements in plane, direction, displacement should match
-dirichlet_bc_info = [[left]*6, [0, 1, 2]*2, [zero_dirichlet_val]*3 + [one_dirichlet_val]*3]
+dirichlet_bc_info = [[left]*3 + [right]*3, 
+                     [0, 1, 2]*2, 
+                     [zero_dirichlet_val]*3 + [one_dirichlet_val]*3]
 
 # Neumann boundary locations
 location_fns = [right]
 
-# Create an instance of the problem.
+# Instance of the problem
 problem = LinearElasticity(mesh,
                            vec=3,
                            dim=3,
@@ -294,58 +214,61 @@ problem = LinearElasticity(mesh,
                            dirichlet_bc_info=dirichlet_bc_info)
                         #    location_fns=location_fns)
 
-##################################################################
-# Apply the automatic differentiation wrapper.
-# This is a critical step that makes the problem solver differentiable.
+# AD wrapper : critical step that makes the problem solver differentiable
 fwd_pred = ad_wrapper(problem, solver_options={'umfpack_solver': {}}, adjoint_solver_options={'umfpack_solver': {}})
 
 # Objective Function
-def J_total(params):
-    # J(u(theta), theta)   
-    # Set the parameters into problem
-    sol_list = fwd_pred(params)
+# TODO: try TV regularization
+def J_total(params): # J(u(theta), theta)
+    # Solve w/ params
+    sol_list = fwd_pred(params) 
+    # Data term
     u_difference = sol_measured - sol_list[0]
+    # Regularization term
     lambda_reg = 0 #1e-9
     u_grad = problem.fes[0].sol_to_grad(sol_list[0])
-    # l2_reg_term = lambda_reg * np.linalg.norm(u_grad)**2 # l2 regularization
-    TV_reg_term = lambda_reg * np.linalg.norm(u_grad)**2 # TV regularization
-    J: float = 0.5 * np.linalg.norm(u_difference)**2 + 0.5 * TV_reg_term
+    l2_reg_term = lambda_reg * np.linalg.norm(u_grad)**2 # l2 regularization
+    # Objective function
+    J = 0.5 * np.linalg.norm(u_difference)**2 + 0.5 * l2_reg_term
+    # Save vtu
     vtu_name = "sol_%03d.vtu" % count
-    save_sol(problem.fes[0], sol_list[0], os.path.join(save_dir, vtu_name), 
+    save_sol(problem.fes[0], sol_list[0], os.path.join(file_dir, vtu_name), 
              cell_infos=[('theta', problem.full_params[:, 0].reshape(-1))])
     return J
 
+# Gradient of J
 def J_grad(rho):
-    J: float # ()
-    dJ: np.ndarray # (...)
-    dJ = jax.grad(J_total)(rho)
-    # output_sol(rho, J)
+    dJ = jax.grad(J_total)(rho) # (...)
     dJ = dJ.reshape(-1)
     return dJ
-
-# Normalize r & h
-def normalize(val, vmin, vmax):
-    return (val - vmin) / (vmax - vmin)
 
 # Set the max/min for the design variables
 bound_min, bound_max = np.min(mesh.points, axis=0), np.max(mesh.points, axis=0)
 x_points = np.linspace(bound_min[0], bound_max[0], 200)
 
-count = 1
 outputs = []
+count = 1
+start_time = time.time()
 for x in x_points:
+    # Initial guess
     rho = np.array([x])
     rho_normalized = normalize(rho, bound_min[0], bound_max[0])
+    # Objective function
     output = J_total(rho_normalized)
     outputs.append(output)
-    print(f"Iteration:{count}")
     count += 1
-    
+end_time = time.time()
+elapsed_time = end_time - start_time
+hours = int(elapsed_time // 3600)
+minutes = int((elapsed_time % 3600) // 60)
+seconds = int(elapsed_time % 60)
+print(f"Total running runtime: {hours}h {minutes}m {seconds}s")
+
+# Plot the optimization results
 x_center = np.array([(bound_min[0] + bound_max[0]) / 2])
 obj_0 = J_total(normalize(x_center, bound_min[0], bound_max[0]))
-
-# Plot the optimization results.
 obj = onp.array(outputs)
+
 plt.figure(1, figsize=(10, 8))
 plt.plot(x_points, obj, linestyle='-', linewidth=2, color='black')
 plt.scatter(x_points, obj, color='black', s=10)
@@ -355,11 +278,10 @@ plt.xlabel(r"x-coordinate", fontsize=20)
 plt.ylabel(r"Objective value", fontsize=20)
 plt.legend(fontsize=20)
 plt.tick_params(labelsize=20)
-plt.tick_params(labelsize=20)
 plt.title('Objective function w.r.t x-coordinate', fontsize=20)
 
 # Save
-plt.savefig(os.path.join(save_dir, 'local_min_test_forward.png'), dpi=300, bbox_inches='tight')
+plt.savefig(os.path.join(file_dir, '%s.png' %file_name), dpi=300, bbox_inches='tight')
 
 end_time = time.time()
 print('Total running time : %f secs' % (end_time - start_time))
