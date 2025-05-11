@@ -19,12 +19,31 @@ import meshio
 import logging
 logger.setLevel(logging.DEBUG)
 
-file_name = 'u_dogbone_0.01_any'
+# Save setup
+file_dir = 'data/inverse'
+os.makedirs(file_dir, exist_ok=True)
+file_name = 'u_dogbone_0.01_x15'
 
-# Load the measured displacement data
-sol_measured = onp.loadtxt('u_dogbone_0.01_any.txt') # (number of nodes, 3) for 3D case
+# Load data (measured displacement)
+sol_measured = onp.loadtxt('u_dogbone_0.01_any_both_fixed.txt') # (number of nodes, 3) in 3D
 
-# Create inner domain (differentiable)
+# Mesh info
+ele_type = 'TET4'
+cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
+dim = 3
+# Meshes
+msh_file = 'Dogbone_0.01.msh'
+meshio_mesh = meshio.read(msh_file) # meshio : 3rd party library
+mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
+
+# Helper function for normalizing parameters
+def normalize(val, vmin, vmax): # original params -> normalized params
+    return (val - vmin) / (vmax - vmin)
+
+def unnormalize(val, vmin, vmax): # normalized params -> original params
+    return val * (vmax - vmin) + vmin
+
+# Inner domain (differentiable)
 class Geometry:
     def __init__(self, cen_x, cen_y, cen_z=None, length=None, height=None, 
                  cells=None, points=None):
@@ -39,109 +58,82 @@ class Geometry:
             height: Height of the cylinder or the cube (3D only)
             cells: Mesh cells
             points: Mesh points
-            param_mins: Dict of minimum values for min-max scaling
-            param_maxes: Dict of maximum values for min-max scaling
         """
-        # Map normalized parameters back to original values
-        def unnormalize(val, vmin, vmax):
-            return val * (vmax - vmin) + vmin
-        
+
         bound_min, bound_max = np.min(points, axis=0), np.max(points, axis=0)
         bound_diff = bound_max - bound_min
-        r_max = (min(bound_diff[0], bound_diff[1]) / 2) * 0.99 # 1% less than the boundary
-        h_max = (bound_diff[2] / 2) * 0.99
+        r_max = min(bound_diff[0], bound_diff[1]) * 0.5 * 0.99 # 1% less than the boundary
+        h_max = bound_diff[2] * 0.5 * 0.99
         
         # Unnormalize the parameters
         self.cen_x = unnormalize(cen_x, bound_min[0], bound_max[0])
         self.cen_y = unnormalize(cen_y, bound_min[1], bound_max[1])
-        if cen_z is None:
-            self.cen_z = None
-        else:
-            self.cen_z = unnormalize(cen_z, bound_min[2], bound_max[2])
-        if length is None:
-            self.length = None
-        else:
-            self.length = unnormalize(length, 0, r_max)
-        if height is None:
-            self.height = None
-        else:
-            self.height = unnormalize(height, 0, h_max)
+        self.cen_z = None if cen_z is None else unnormalize(cen_z, bound_min[2], bound_max[2])
+        self.length = None if length is None else unnormalize(length, 0, r_max)
+        self.height = None if height is None else unnormalize(height, 0, h_max)
 
-        # Store the cells and points
+        # Store data
         self.cells = cells
         self.points = points
 
-    def circle(self) -> np.ndarray:
+    def circle(self) -> np.ndarray:   
         """
         Get indices of cells inside the circle (2D) or cylinder (3D).
-        """
-        is_2d = self.cen_z == None
-        
+        """    
+        # Sharpness for sigmoid
+        k = 1.0
+        # Squared distances
         domain_squared = (self.points[:,0] - self.cen_x)**2 + (self.points[:,1] - self.cen_y)**2
         r_squared = self.length ** 2
-        k = 1.0  # Controls transition sharpness
+        z_squared = None if is_2d is None else (self.points[:,2] - self.cen_z)**2
+        h_squared = None if is_2d is None else self.height ** 2
 
-        # Find the indices of the points in the inner domain
+        # Point indices
+        is_2d = self.cen_z == None
+
         if is_2d: # 2D
-            # When r_squared < r_param: sigmoid ≈ 1 (inside)
-            # When r_squared > r_param: sigmoid ≈ 0 (outside)
-            point_indicators = jax.nn.sigmoid(k * (domain_squared - r_squared))
-            
+            point_indicators = jax.nn.sigmoid(k * (domain_squared - r_squared)) # (+): outside, (-): inside  
         else: # 3D  
-            z_squared = (self.points[:, 2] - self.cen_z)**2
-            h_squared = self.height ** 2
             point_indicators = jax.nn.sigmoid(k * (domain_squared - r_squared))
-            z_indicators = jax.nn.sigmoid(k * (z_squared - h_squared))
-            # np.round() makes indifferentiable
-            
-            # point_indicators = 1 only if both are 1
+            z_indicators = jax.nn.sigmoid(k * (z_squared - h_squared))            
+            # Choose maximum sigmoid value
             point_indicators = np.maximum(point_indicators, z_indicators)
 
-        # Find the point_indicators by the indices stored in the cells
-        cell_indicators = point_indicators[self.cells] # Assign point indicators by cell indices
-        # cell_indicators = 1 only if all points are 1
-        cell_indicators = np.prod(cell_indicators, axis=1)
-        return cell_indicators # array of shape (n,)
+        # Cell indices cell (cell_indicators = [point1_indicators, point2_indicators, point3_indicators, point4_indicators])
+        cell_indicators = point_indicators[self.cells] # Assign point indicators to cell indicators
+        cell_indicators = np.prod(cell_indicators, axis=1) # "1" if all points are 1
+        return cell_indicators # array (n,)
     
     def circle_relu(self) -> np.ndarray:
-        """
-        Get indices of cells inside the circle (2D) or cylinder (3D).
-        """
-        is_2d = self.cen_z == None
-        
+        # Sharpness for sigmoid
+        k = 1.0
+        # Squared distances
         domain_squared = (self.points[:,0] - self.cen_x)**2 + (self.points[:,1] - self.cen_y)**2
         r_squared = self.length ** 2
-        k = 50.0  # Controls transition sharpness
+        z_squared = None if is_2d is None else (self.points[:,2] - self.cen_z)**2
+        h_squared = None if is_2d is None else self.height ** 2
 
-        # Find the indices of the points in the inner domain
+        # Point indices
+        is_2d = self.cen_z == None
+
         if is_2d: # 2D
-            # When r_squared < r_param: sigmoid ≈ 1 (inside)
-            # When r_squared > r_param: sigmoid ≈ 0 (outside)
-            point_indicators = jax.nn.relu(domain_squared - r_squared)
-            
+            point_indicators = jax.nn.relu(k * (domain_squared - r_squared)) # (+): outside, (-): inside  
         else: # 3D  
-            z_squared = (self.points[:, 2] - self.cen_z)**2
-            h_squared = self.height ** 2
-            point_indicators = jax.nn.relu(domain_squared - r_squared)
-            z_indicators = jax.nn.relu(z_squared - h_squared)
-            # np.round() makes indifferentiable
-            
-            # point_indicators = 1 only if both are 1
+            point_indicators = jax.nn.relu(k * (domain_squared - r_squared))
+            z_indicators = jax.nn.relu(k * (z_squared - h_squared))            
+            # Choose maximum relu value
             point_indicators = np.maximum(point_indicators, z_indicators)
 
-        # Find the point_indicators by the indices stored in the cells
-        cell_indicators = point_indicators[self.cells] # Assign point indicators by cell indices
-        # cell_indicators = 1 only if all points are 1
-        cell_indicators = np.prod(cell_indicators, axis=1)
+        # Cell indices cell (cell_indicators = [point1_indicators, point2_indicators, point3_indicators, point4_indicators])
+        cell_indicators = point_indicators[self.cells] # Assign point indicators to cell indicators
+        cell_indicators = np.prod(cell_indicators, axis=1) # "1" if all points are 1
         cell_indicators = jax.nn.sigmoid(cell_indicators)
-        return cell_indicators # array of shape (n,)
+        return cell_indicators # array (n,)
 
 # Weak forms
 class LinearElasticity(Problem):
     def custom_init(self): # TODO: integrate geometry with this?
-            # self.fes[0].flex_inds : indices of the inner domain cells
-            # Set up 'self.fes[0].flex_inds' to create the inner domain
-            self.fes[0].flex_inds = np.arange(len(self.fes[0].cells))
+            self.fes[0].flex_inds = np.arange(len(self.fes[0].cells)) # "flex_inds" : idx of the inner domain cells
             
     # Tensor
     def get_tensor_map(self):
@@ -161,46 +153,35 @@ class LinearElasticity(Problem):
             return sigma
         return stress
 
+    def get_surface_maps(self):
+        def surface_map(u, x): # traction
+            return np.array([-15., 0., 0.]) # tr_x = -15 ((-): tension, (+): compression)
+        return [surface_map]
+
     def set_params(self, params): # params = [x, y, z, r, h]
-        # Geometry class doesn't use 'flex_inds', but directly assigns 'theta' values to the cells
-        
-        # Normalize r & h
-        def normalize(val, vmin, vmax):
-            return (val - vmin) / (vmax - vmin)
+        # Geometry class doesn't use 'flex_inds', and directly assigns 'theta' values to the cells
         
         bound_min, bound_max = np.min(self.fes[0].points, axis=0), np.max(self.fes[0].points, axis=0)
         bound_diff = bound_max - bound_min
         r_max = (min(bound_diff[0], bound_diff[1]) / 2) * 0.99
         h_max = (bound_diff[2] / 2) * 0.99
-        length = normalize(4.0, 0, r_max)
+        # length = normalize(4.0, 0, r_max)
         height = normalize(0.6, 0, h_max)
         
-        inner_domain = Geometry(params[0], params[1], params[2], length, height, 
-                                self.fes[0].cells, self.fes[0].points)
+        # Inner domain indices
+        inner_domain = Geometry(params[0], params[1], params[2], 
+                                params[3], height, 
+                                self.fes[0].cells, 
+                                self.fes[0].points)
         full_params = inner_domain.circle()
         full_params = np.expand_dims(full_params, axis=1)
+
+        # Match "full_params" to the number of quadrature points
         thetas = np.repeat(full_params[:, None, :], self.fes[0].num_quads, axis=1)
+
         self.params = params
         self.full_params = full_params
         self.internal_vars = [thetas]
-        
-    # Traction
-    def get_surface_maps(self):
-        def surface_map(u, x):
-            # Traction components in each direction
-            return np.array([-15., 0., 0.])
-        return [surface_map]
-    
-# Mesh info
-ele_type = 'TET4'
-cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
-dim = 3
-
-# Create meshes using meshio : 3rd party library
-msh_file = 'Dogbone_0.01.msh'
-meshio_mesh = meshio.read(msh_file)
-# Input mesh info into Mesh class
-mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
 # Boundary Locations
 def left(point):
@@ -210,60 +191,68 @@ def right(point):
     return np.isclose(point[0], np.max(mesh.points, axis=0)[0], atol=1e-5) # True for x = Lx
 
 # Dirichlet boundary values
+# in the direction normal to the boundary("1": tension, "-1": compression)
 def zero_dirichlet_val(point):
     return 0.
+
+def one_dirichlet_val(point):
+    return 1.
 
 # Dirichlet boundary info
 # [plane, direction, displacement]
 # number of elements in plane, direction, displacement should match
-dirichlet_bc_info = [[left] * 3, [0, 1, 2], [zero_dirichlet_val] * 3]
+dirichlet_bc_info = [[left] * 3 + [right] * 3, 
+                     [0, 1, 2] * 2, 
+                     [zero_dirichlet_val] * 3 + [one_dirichlet_val] * 3]
 
 # Neumann boundary locations
+# "get_surface_maps" performs surface integral to get the traction
 location_fns = [right]
 
-# Create an instance of the problem.
+# Instance of the problem
 problem = LinearElasticity(mesh,
                            vec=3,
                            dim=3,
                            ele_type=ele_type,
-                           dirichlet_bc_info=dirichlet_bc_info,
-                           location_fns=location_fns)
+                           dirichlet_bc_info=dirichlet_bc_info,)
+                        #    location_fns=location_fns)
 
-##################################################################
-# Apply the automatic differentiation wrapper.
-# This is a critical step that makes the problem solver differentiable.
+# AD wrapper : critical step that makes the problem solver differentiable
 fwd_pred = ad_wrapper(problem, solver_options={'umfpack_solver': {}}, adjoint_solver_options={'umfpack_solver': {}})
 
 # Objective Function
-def J_total(params):
-    # J(u(theta), theta)   
-    # Set the parameters into problem
-    sol_list = fwd_pred(params)
+# TODO: try TV regularization
+def J_total(params): # J(u(theta), theta)
+    # Solve w/ params
+    sol_list = fwd_pred(params) 
+    # Data term
     u_difference = sol_measured - sol_list[0]
+    # Regularization term
     lambda_reg = 0 #1e-9
     u_grad = problem.fes[0].sol_to_grad(sol_list[0])
-    # l2_reg_term = lambda_reg * np.linalg.norm(u_grad)**2 # l2 regularization
-    TV_reg_term = lambda_reg * np.linalg.norm(u_grad)**2 # TV regularization
-    J: float = 0.5 * np.linalg.norm(u_difference)**2 + 0.5 * TV_reg_term
+    l2_reg_term = lambda_reg * np.linalg.norm(u_grad)**2 # l2 regularization
+    # Objective function
+    J = 0.5 * np.linalg.norm(u_difference)**2 + 0.5 * l2_reg_term
     return J
 
+# Gradient of J
 def J_grad(rho):
-    J: float # ()
-    dJ: np.ndarray # (...)
-    dJ = jax.grad(J_total)(rho)
-    # output_sol(rho, J)
+    dJ = jax.grad(J_total)(rho) # (...)
     dJ = dJ.reshape(-1)
     return dJ
 
-# Output solution(displacement u) from solving the forward problem
+# Solution(u) from forward problem
 outputs = []
 params = []
 def output_sol(intermediate_result):
-    # Store the solution to local file (vtu).
+    # Solve
     sol_list = fwd_pred(intermediate_result.x)
-    vtu_path = f'data/inverse/{file_name}/sol_{output_sol.counter:03d}.vtu'
-    save_sol(problem.fes[0], np.hstack((sol_list[0], np.zeros((len(sol_list[0]), 1)))), 
-             vtu_path, cell_infos=[('theta', problem.full_params[:, 0])])
+    # Save vtu
+    vtu_name = f'{file_name}/sol_{output_sol.counter:03d}.vtu'
+    save_sol(problem.fes[0], 
+             np.hstack((sol_list[0], np.zeros((len(sol_list[0]), 1)))), 
+             os.path.join(file_dir, vtu_name), 
+             cell_infos=[('theta', problem.full_params[:, 0])])
     print(f"Iteration:{output_sol.counter}")
     print(f"Obj:{intermediate_result.fun}")
     outputs.append(intermediate_result.fun)
@@ -272,23 +261,7 @@ def output_sol(intermediate_result):
     return 
 output_sol.counter = 1
 
-# constraint function = 0 (will be not considered in this problem.)
-def consHandle(rho, epoch):
-    # c should have shape (numConstraints,)
-    # dc should have shape (numConstraints, ...)
-    def constraint_fn(rho):
-        # g = np.mean(rho)/vf - 1.
-        g = np.array(0.)
-        return g
-    c, gradc = jax.value_and_grad(constraint_fn)(rho)
-    c, gradc = c.reshape((1,)), gradc[None, ...]
-    return c, gradc
-
-# Normalize r & h
-def normalize(val, vmin, vmax):
-    return (val - vmin) / (vmax - vmin)
-
-# Set the max/min for the design variables
+# Set the max/min for the design variables  
 bound_min, bound_max = np.min(mesh.points, axis=0), np.max(mesh.points, axis=0)
 bound_diff = bound_max - bound_min
 bound_sum = bound_max + bound_min
@@ -297,37 +270,41 @@ y_bound = (bound_min[1], bound_max[1])
 z_bound = (bound_min[2], bound_max[2])
 r_bound = (0, (min(bound_diff[0], bound_diff[1]) / 2) * 0.99) # 1% less than the boundary
 h_bound = (0, (bound_diff[2] / 2) * 0.99)
-rho_ini = np.array([bound_sum[0] / 4, bound_sum[1] / 2, bound_sum[2] / 2])
+
+# Initial guess
+rho_ini = np.array([bound_sum[0]/2, bound_sum[1]/2, bound_sum[2]/2, 0.01])
 rho_ini_normalized = np.array([normalize(rho_ini[0], bound_min[0], bound_max[0]),
                                normalize(rho_ini[1], bound_min[1], bound_max[1]),
-                               normalize(rho_ini[2], bound_min[2], bound_max[2])])
+                               normalize(rho_ini[2], bound_min[2], bound_max[2]),
+                               normalize(rho_ini[3], 0., r_bound[1])])
 
-# Optimization problem setting
+# Initial solution
+start_time = time.time() # Start timing
+params = params + [rho_ini]
+save_sol(problem.fes[0], 
+         np.hstack(np.ones((len(sol_measured), 4))),
+         os.path.join(file_dir, f'{file_name}/sol_000.vtu'),
+         cell_infos=[('theta', np.ones(problem.fes[0].num_cells))])
+
+# Optimization setup
 numConstraints = 1
 optimizationParams = {'maxiter':100, 'disp':True} # 'ftol':1e-4
-start_time = time.time() # Start timing
 
-# Minimize the objective function
-params = params + [rho_ini]
-save_sol(problem.fes[0], np.hstack(np.ones((len(sol_measured), 4))), 
-         f'data/inverse/{file_name}/sol_000.vtu', 
-         cell_infos=[('theta', np.ones(problem.fes[0].num_cells))])
-minimize(J_total, jac=J_grad, x0=rho_ini_normalized, 
-        #  bounds=[(0, 1)] * len(rho_ini),
-         bounds=[(0.2, 0.6), (0, 1), (0, 1)],
-         options=optimizationParams, method='L-BFGS-B', callback=output_sol)
+# Optimize
+minimize(J_total, jac=J_grad, 
+         x0=rho_ini_normalized, 
+         bounds=[(0, 1)] * len(rho_ini), # normalized
+         options=optimizationParams, 
+         method='L-BFGS-B', callback=output_sol)
 end_time = time.time() # End timing
 elapsed_time = end_time - start_time
-
-# Convert to hours, minutes, seconds
 hours = int(elapsed_time // 3600)
 minutes = int((elapsed_time % 3600) // 60)
 seconds = int(elapsed_time % 60)
 print(f"Total optimization runtime: {hours}h {minutes}m {seconds}s")
 print("Total Iteration:", output_sol.counter)
-print(f"As a reminder, L2 norm of the displacement differences = {J_total(rho_ini)} for full material")
 
-# Plot the optimization results.
+# Plot the optimization results
 obj = onp.array(outputs)
 plt.figure(1, figsize=(10, 8))
 plt.plot(onp.arange(len(obj)) + 1, obj, linestyle='-', linewidth=2, color='black')
@@ -338,9 +315,6 @@ plt.legend(fontsize=20)
 plt.tick_params(labelsize=20)
 plt.tick_params(labelsize=20)
 # plt.title(rf'L2 Regularization with $\lambda = 1e-9$', fontsize=20)
-# plt.title(rf'Initial Guess with $\theta = {vf}$', fontsize=20)
 
-save_dir = 'data/inverse/figures'
-os.makedirs(save_dir, exist_ok=True)  # Create directory if it doesn't exist
-plt.savefig('data/inverse/figures/%s_obj.png' %file_name, dpi=300, bbox_inches='tight')
-# plt.show()
+# Save
+plt.savefig(os.path.join(file_dir, '%s_obj.png' %file_name), dpi=300, bbox_inches='tight')

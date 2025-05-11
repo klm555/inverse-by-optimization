@@ -69,6 +69,7 @@ def right(point):
     return np.isclose(point[0], np.max(mesh.points, axis=0)[0], atol=1e-5) # True for x = Lx
 
 # Dirichlet boundary values
+# in the direction normal to the boundary("1": tension, "-1": compression)
 def zero_dirichlet_val(point):
     return 0.
 
@@ -116,7 +117,6 @@ class Geometry:
         # Indices of the cells
         domain_cells = np.any(np.isin(self.cells, domain_points), axis=1)
         flex_inds = np.where(domain_cells)[0]
-        
         return flex_inds # array of shape (n,)
     
     def rectangle(self) -> np.ndarray:
@@ -131,7 +131,6 @@ class Geometry:
         # Find the indices of the cells in the inner domain
         domain_cells = np.any(np.isin(self.cells, domain_points), axis=1)
         flex_inds = np.where(domain_cells)[0]
-
         return flex_inds # array of shape (n,)
 
 # Inner domain indices
