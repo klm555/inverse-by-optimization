@@ -16,7 +16,7 @@ logger.setLevel(logging.DEBUG)
 # Save setup
 file_dir = 'data/forward'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'u_dogbone_0.01_x15'
+file_name = 'two_nonzero_dirichlet'
 
 # Elastic modulus
 E_inner = 1.0e-3 # Inner domain (soft material)
@@ -48,10 +48,10 @@ class LinearElasticity(Problem):
             return sigma
         return stress
 
-    def get_surface_maps(self):
-        def surface_map(u, x): # traction
-            return np.array([-15., 0., 0.]) # tr_x = -15 ((-): tension, (+): compression)
-        return [surface_map]
+    # def get_surface_maps(self):
+    #     def surface_map(u, x): # traction
+    #         return np.array([-15., 0., 0.]) # tr_x = -15 ((-): tension, (+): compression)
+    #     return [surface_map]
 
     def set_params(self, params):
         # Override base class method.
@@ -73,10 +73,18 @@ def right(point):
 def zero_dirichlet_val(point):
     return 0.
 
+def one_dirichlet_val(point):
+    return 1.
+
+def minus_one_dirichlet_val(point):
+    return -1.
+
 # Dirichlet boundary info
 # [plane, direction, displacement]
 # number of elements in plane, direction, displacement should match
-dirichlet_bc_info = [[left] * 3, [0, 1, 2], [zero_dirichlet_val] * 3]
+dirichlet_bc_info = [[left]*3 + [right]*3, 
+                     [0, 1, 2]*2, 
+                     [minus_one_dirichlet_val] + [zero_dirichlet_val]*2 + [one_dirichlet_val] + [zero_dirichlet_val]*2]
 
 # Neumann boundary locations
 # "get_surface_maps" performs surface integral to get the traction
@@ -87,8 +95,8 @@ problem = LinearElasticity(mesh,
                            vec=3,
                            dim=3,
                            ele_type=ele_type,
-                           dirichlet_bc_info=dirichlet_bc_info,
-                           location_fns=location_fns)
+                           dirichlet_bc_info=dirichlet_bc_info,)
+                        #    location_fns=location_fns)
 
 # TODO: I didn't integrate the Geometry class into the problem class, 
 # for more flexibility during the testing phase.
@@ -158,7 +166,7 @@ sol_list = solver(problem, solver_options={'umfpack_solver': {}})
 # Save
 vtu_name = 'vtk/%s.vtu' %file_name
 save_sol(problem.fes[0], 
-         np.hstack((sol_list[0], np.zeros((len(sol_list[0]), 1)))),
+         sol_list[0],
          os.path.join(file_dir, vtu_name),
          cell_infos=[('elastic_modulus', elastic_modulus)]) 
 # 2nd arg makes the solution 3D, which enables warping in Paraview
