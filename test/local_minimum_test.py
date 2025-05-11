@@ -259,6 +259,7 @@ for x in x_points:
     # Objective function
     output = J_total(rho_normalized)
     outputs.append(output)
+    print("Iteration : %d" % count)
     count += 1
 end_time = time.time()
 elapsed_time = end_time - start_time
