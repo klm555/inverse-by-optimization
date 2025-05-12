@@ -128,15 +128,15 @@ class Geometry:
         return flex_inds # array of shape (n,)
     
     def rectangle(self) -> np.ndarray:
-        # Set the edges of the square
-        left, right = self.center[0], self.center[0] + self.length
-        bottom, top = self.center[1], self.center[1] + self.length
+        # Edges of the square
+        left, right = self.center[0] - self.length, self.center[0] + self.length
+        bottom, top = self.center[1] - self.length, self.center[1] + self.length
         z_bot, z_top = self.center[2] - self.height, self.center[2] + self.height
-        # Find the indices of the points in the inner domain
+        # Indices of the points in the inner domain
         domain_points = np.where((self.points[:,0] >= left) & (self.points[:,0] <= right) &
                                  (self.points[:,1] >= bottom) & (self.points[:,1] <= top) &
                                  (self.points[:,2] >= z_bot) & (self.points[:,2] <= z_top))[0]
-        # Find the indices of the cells in the inner domain
+        # Indices of the cells
         domain_cells = np.any(np.isin(self.cells, domain_points), axis=1)
         flex_inds = np.where(domain_cells)[0]
         return flex_inds # array of shape (n,)
