@@ -18,7 +18,7 @@ import jax.numpy as np
 from jax_fem.problem import Problem
 from jax_fem.solver import solver, ad_wrapper
 from jax_fem.utils import save_sol
-from jax_fem.generate_mesh import rectangle_mesh, get_meshio_cell_type, Mesh
+from jax_fem.generate_mesh import box_mesh_gmsh, get_meshio_cell_type, Mesh
 from jax_fem.mma import optimize
 from jax_fem import logger
 from scipy.optimize import minimize, Bounds
@@ -31,20 +31,23 @@ import logging
 logger.setLevel(logging.DEBUG)
 
 # Save setup
-file_dir = '../data/local_min_test/one_nonzero_dirichlet'
+file_dir = '../data/local_min_test/box-shape_two_nonzero_dirichlet'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'one_nonzero_dirichlet'
+file_name = 'box-shape_two_nonzero_dirichlet'
 
 # Load data (measured displacement)
-sol_measured = onp.loadtxt('../u_dogbone_0.01_any.txt') # (number of nodes, 3) in 3D
+sol_measured = onp.loadtxt('../box-shape_two_nonzero_dirichlet.txt') # (number of nodes, 3) in 3D
 
 # Mesh info
 ele_type = 'TET4'
 cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
+Lx, Ly, Lz = 10., 2., 2.
+Nx, Ny, Nz = 25, 5, 5
 dim = 3
 # Meshes
-msh_file = '../Dogbone_0.01.msh'
-meshio_mesh = meshio.read(msh_file) # meshio : 3rd party library
+meshio_mesh = box_mesh_gmsh(Nx=Nx, Ny=Ny, Nz=Nz, Lx=Lx, Ly=Ly, Lz=Lz,
+                            data_dir=file_dir,
+                            ele_type=ele_type)
 mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
 # Helper function for normalizing parameters
@@ -72,8 +75,8 @@ class Geometry:
         """
         bound_min, bound_max = np.min(points, axis=0), np.max(points, axis=0)
         bound_diff = bound_max - bound_min
-        r_max = min(bound_diff[0], bound_diff[1]) * 0.5 * 0.99 # 1% less than the boundary
-        h_max = bound_diff[2] * 0.5 * 0.99
+        r_max = min(bound_diff[0], bound_diff[1]) * 0.5 # 1% less than the boundary
+        h_max = bound_diff[2] * 0.5
         
         # Unnormalize the parameters
         self.cen_x = unnormalize(cen_x, bound_min[0], bound_max[0])
@@ -86,6 +89,20 @@ class Geometry:
         self.cells = cells
         self.points = points
 
+    def rectangle(self) -> np.ndarray:
+        # Edges of the square
+        left, right = self.cen_x - self.length, self.cen_x + self.length
+        bottom, top = self.cen_y - self.length, self.cen_y + self.length
+        z_bot, z_top = self.cen_z - self.height, self.cen_z + self.height
+        # Indices of the points in the inner domain
+        domain_points = np.where((self.points[:,0] >= left) & (self.points[:,0] <= right) &
+                                 (self.points[:,1] >= bottom) & (self.points[:,1] <= top) &
+                                 (self.points[:,2] >= z_bot) & (self.points[:,2] <= z_top))[0]
+        # Indices of the cells
+        domain_cells = np.any(np.isin(self.cells, domain_points), axis=1)
+        flex_inds = np.where(domain_cells)[0]
+        return flex_inds # array of shape (n,)
+    
     def circle(self) -> np.ndarray:
         # Height
         z_bot, z_top = self.cen_z - self.height, self.cen_z + self.height
@@ -94,7 +111,7 @@ class Geometry:
                                   (self.points[:,1] - self.cen_y)**2 <= self.length ** 2) &
                                  (self.points[:,2] >= z_bot) & (self.points[:,2] <= z_top))[0]
         # Indices of the cells
-        domain_cells = np.any(np.isin(self.cells, domain_points), axis=1)
+        domain_cells = np.all(np.isin(self.cells, domain_points), axis=1)
         flex_inds = np.where(domain_cells)[0]    
         return flex_inds # array of shape (n,)
 
@@ -159,15 +176,15 @@ class LinearElasticity(Problem):
         h_max = (bound_diff[2] / 2)
         y = normalize((bound_min[1] + bound_max[1]) / 2, bound_min[1], bound_max[1])
         z = normalize((bound_min[2] + bound_max[2]) / 2, bound_min[2], bound_max[2])
-        length = normalize(4.0, 0, r_max)
-        height = normalize(0.6, 0, h_max)
+        length = normalize(2/5/2, 0, r_max)
+        height = normalize(2/5/2, 0, h_max)
 
         # Inner domain indices
         inner_domain = Geometry(params[0], y, z, 
                                 length, height, 
                                 self.fes[0].cells, 
                                 self.fes[0].points)
-        flex_inds = inner_domain.circle()
+        flex_inds = inner_domain.rectangle()
         
         # Assign density(0/1) to entire domain
         full_params = np.ones((problem.num_cells, 1)) # (num_cells, 1)
@@ -204,7 +221,7 @@ def minus_one_dirichlet_val(point):
 # number of elements in plane, direction, displacement should match
 dirichlet_bc_info = [[left]*3 + [right]*3, 
                      [0, 1, 2]*2, 
-                     [zero_dirichlet_val]*3 + [one_dirichlet_val] + [zero_dirichlet_val]*2]
+                     [minus_one_dirichlet_val] + [zero_dirichlet_val]*2 + [one_dirichlet_val] + [zero_dirichlet_val]*2]
 
 # Neumann boundary locations
 location_fns = [right]
