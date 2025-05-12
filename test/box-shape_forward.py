@@ -126,7 +126,7 @@ class Geometry:
                                   (self.points[:,1] - self.center[1])**2 <= self.length ** 2) &
                                  (self.points[:,2] >= z_bot) & (self.points[:,2] <= z_top))[0]
         # Indices of the cells
-        domain_cells = np.any(np.isin(self.cells, domain_points), axis=1)
+        domain_cells = np.all(np.isin(self.cells, domain_points), axis=1)
         flex_inds = np.where(domain_cells)[0]
         return flex_inds # array of shape (n,)
     
