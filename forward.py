@@ -27,7 +27,7 @@ ele_type = 'TET4'
 cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
 dim = 3
 # Meshes
-msh_file = 'Dogbone_0.01.msh'
+msh_file = 'Dogbone_0.03.msh'
 meshio_mesh = meshio.read(msh_file) # meshio : 3rd party library
 mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
