@@ -98,7 +98,9 @@ class Geometry:
         flex_inds = np.where(domain_cells)[0]    
         return flex_inds # array of shape (n,)
 
-    def circle_sigmoid(self) -> np.ndarray:       
+    def circle_sigmoid(self) -> np.ndarray:  
+        # Point indices
+        is_2d = self.cen_z == None # True if "self.cen_z" is None     
         # Sharpness for sigmoid
         k = 1.0
         # Squared distances
@@ -106,9 +108,6 @@ class Geometry:
         r_squared = self.length ** 2
         z_squared = None if is_2d is None else (self.points[:,2] - self.cen_z)**2
         h_squared = None if is_2d is None else self.height ** 2
-
-        # Point indices
-        is_2d = self.cen_z == None
 
         if is_2d: # 2D
             point_indicators = jax.nn.sigmoid(k * (domain_squared - r_squared)) # (+): outside, (-): inside  
