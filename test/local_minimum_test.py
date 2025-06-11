@@ -30,10 +30,13 @@ import meshio
 import logging
 logger.setLevel(logging.DEBUG)
 
+print('JAX backend:', jax.default_backend())
+print('Devices:', jax.devices())
+
 # Save setup
-file_dir = '../data/local_min_test/sigmoid10-two_nxonzero_dirichlet'
+file_dir = '../data/local_min_test/sigmoid1-two_nonzero_dirichlet'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'sigmoid10-two_nonzero_dirichlet'
+file_name = 'sigmoid1-two_nonzero_dirichlet'
 
 # Load data (measured displacement)
 sol_measured = onp.loadtxt('../two_nonzero_dirichlet.txt') # (number of nodes, 3) in 3D
