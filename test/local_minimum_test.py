@@ -25,6 +25,7 @@ from scipy.optimize import minimize, Bounds
 
 import numpy as onp
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import meshio
 
 import logging
@@ -34,9 +35,9 @@ print('JAX backend:', jax.default_backend())
 print('Devices:', jax.devices())
 
 # Save setup
-file_dir = '../data/local_min_test/sigmoid1-two_nonzero_dirichlet'
+file_dir = '../data/local_min_test/2var-sigmoid1-two_nonzero_dirichlet'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'sigmoid1-two_nonzero_dirichlet'
+file_name = '2var-sigmoid1-two_nonzero_dirichlet'
 
 # Load data (measured displacement)
 sol_measured = onp.loadtxt('../two_nonzero_dirichlet.txt') # (number of nodes, 3) in 3D
@@ -159,13 +160,13 @@ class LinearElasticity(Problem):
         bound_diff = bound_max - bound_min
         r_max = (min(bound_diff[0], bound_diff[1]) / 2) # 1% less than the boundary
         h_max = (bound_diff[2] / 2)
-        y = normalize((bound_min[1] + bound_max[1]) / 2, bound_min[1], bound_max[1])
+        # y = normalize((bound_min[1] + bound_max[1]) / 2, bound_min[1], bound_max[1])
         z = normalize((bound_min[2] + bound_max[2]) / 2, bound_min[2], bound_max[2])
         length = normalize(4.0, 0, r_max)
         height = normalize(0.6, 0, h_max)
         
         # Inner domain indices
-        inner_domain = Geometry(params[0], y, z, 
+        inner_domain = Geometry(params[0], params[1], z, 
                                 length, height, 
                                 self.fes[0].cells, 
                                 self.fes[0].points)
@@ -245,20 +246,23 @@ def J_grad(rho):
 
 # Set the max/min for the design variables
 bound_min, bound_max = np.min(mesh.points, axis=0), np.max(mesh.points, axis=0)
-x_points = np.linspace(bound_min[0], bound_max[0], 200)
+x_points = np.linspace(bound_min[0], bound_max[0], 15)
+y_points = np.linspace(bound_min[1], bound_max[1], 15)
 
 outputs = []
 count = 1
 start_time = time.time()
 for x in x_points:
-    # Initial guess
-    rho = np.array([x])
-    rho_normalized = normalize(rho, bound_min[0], bound_max[0])
-    # Objective function
-    output = J_total(rho_normalized)
-    outputs.append(output)
-    print("Iteration : %d" % count)
-    count += 1
+    for y in y_points:
+        # Initial guess
+        x_normalized = normalize(x, bound_min[0], bound_max[0])
+        y_normalized = normalize(y, bound_min[1], bound_max[1])
+        rho_normalized = np.array([x_normalized, y_normalized])
+        # Objective function
+        output = J_total(rho_normalized)
+        outputs.append(output)
+        print("Iteration : %d" % count)
+        count += 1
 end_time = time.time()
 elapsed_time = end_time - start_time
 hours = int(elapsed_time // 3600)
@@ -267,20 +271,24 @@ seconds = int(elapsed_time % 60)
 print(f"Total running runtime: {hours}h {minutes}m {seconds}s")
 
 # Plot the optimization results
-x_center = np.array([(bound_min[0] + bound_max[0]) / 2])
-obj_0 = J_total(normalize(x_center, bound_min[0], bound_max[0]))
+x_center = (bound_min[0] + bound_max[0]) / 2
+y_center = (bound_min[1] + bound_max[1]) / 2
+obj_0 = J_total(np.array([normalize(x_center, bound_min[0], bound_max[0]),
+                normalize(y_center, bound_min[1], bound_max[1])]))
 obj = onp.array(outputs)
+# Reshape 'obj' into a grid nx x ny
+obj_grid = obj.reshape(len(x_points), len(y_points))
 
-plt.figure(1, figsize=(10, 8))
-plt.plot(x_points, obj, linestyle='-', linewidth=2, color='black')
-plt.scatter(x_points, obj, color='black', s=10)
-plt.axhline(y=obj_0, color='r', linestyle='--', label='J = %f' % obj_0)
-plt.axvline(x=x_center, color='r', linestyle='--', label='x = %f' % x_center[0])
-plt.xlabel(r"x-coordinate", fontsize=20)
-plt.ylabel(r"Objective value", fontsize=20)
-plt.legend(fontsize=20)
+# Mesh for plotting
+X, Y = onp.meshgrid(x_points, y_points, indexing='ij')
+
+fig = plt.figure(figsize=(16.5, 1.9))
+contour_plot = plt.contourf(X, Y, obj_grid, levels=30, cmap='viridis')
+plt.colorbar(contour_plot, label='Objective value')
+plt.xlabel(r"x-coordinate", fontsize=14)
+plt.ylabel(r"y-coordinate", fontsize=14)
+plt.title('Objective function over x, y', fontsize=20)
 plt.tick_params(labelsize=20)
-plt.title('Objective function w.r.t x-coordinate', fontsize=20)
 
 # Save
 plt.savefig(os.path.join(file_dir, '%s.png' %file_name), dpi=300, bbox_inches='tight')
