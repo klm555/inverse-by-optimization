@@ -22,17 +22,17 @@ logger.setLevel(logging.DEBUG)
 # Save setup
 file_dir = 'data/inverse'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'u_dogbone_0.01_x15'
+file_name = 'init-sigmoid1-two_nonzero_dirichlet'
 
 # Load data (measured displacement)
-sol_measured = onp.loadtxt('u_dogbone_0.01_any_both_fixed.txt') # (number of nodes, 3) in 3D
+sol_measured = onp.loadtxt('two_nonzero_dirichlet.txt') # (number of nodes, 3) in 3D
 
 # Mesh info
 ele_type = 'TET4'
 cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
 dim = 3
 # Meshes
-msh_file = 'Dogbone_0.01.msh'
+msh_file = 'Dogbone_0.05.msh'
 meshio_mesh = meshio.read(msh_file) # meshio : 3rd party library
 mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
@@ -80,6 +80,8 @@ class Geometry:
         """
         Get indices of cells inside the circle (2D) or cylinder (3D).
         """    
+        # Point indices
+        is_2d = self.cen_z == None # True if "self.cen_z" is None
         # Sharpness for sigmoid
         k = 1.0
         # Squared distances
@@ -87,9 +89,6 @@ class Geometry:
         r_squared = self.length ** 2
         z_squared = None if is_2d is None else (self.points[:,2] - self.cen_z)**2
         h_squared = None if is_2d is None else self.height ** 2
-
-        # Point indices
-        is_2d = self.cen_z == None
 
         if is_2d: # 2D
             point_indicators = jax.nn.sigmoid(k * (domain_squared - r_squared)) # (+): outside, (-): inside  
@@ -153,24 +152,25 @@ class LinearElasticity(Problem):
             return sigma
         return stress
 
-    def get_surface_maps(self):
-        def surface_map(u, x): # traction
-            return np.array([-15., 0., 0.]) # tr_x = -15 ((-): tension, (+): compression)
-        return [surface_map]
+    # def get_surface_maps(self):
+    #     def surface_map(u, x): # traction
+    #         return np.array([-15., 0., 0.]) # tr_x = -15 ((-): tension, (+): compression)
+    #     return [surface_map]
 
     def set_params(self, params): # params = [x, y, z, r, h]
         # Geometry class doesn't use 'flex_inds', and directly assigns 'theta' values to the cells
-        
         bound_min, bound_max = np.min(self.fes[0].points, axis=0), np.max(self.fes[0].points, axis=0)
         bound_diff = bound_max - bound_min
-        r_max = (min(bound_diff[0], bound_diff[1]) / 2) * 0.99
+        r_max = (min(bound_diff[0], bound_diff[1]) / 2) * 0.99 # 1% less than the boundary
         h_max = (bound_diff[2] / 2) * 0.99
-        # length = normalize(4.0, 0, r_max)
+        y = normalize((bound_min[1] + bound_max[1]) / 2, bound_min[1], bound_max[1])
+        z = normalize((bound_min[2] + bound_max[2]) / 2, bound_min[2], bound_max[2])
+        length = normalize(4.0, 0, r_max)
         height = normalize(0.6, 0, h_max)
         
         # Inner domain indices
-        inner_domain = Geometry(params[0], params[1], params[2], 
-                                params[3], height, 
+        inner_domain = Geometry(params[0], y, z, 
+                                length, height, 
                                 self.fes[0].cells, 
                                 self.fes[0].points)
         full_params = inner_domain.circle()
@@ -198,15 +198,17 @@ def zero_dirichlet_val(point):
 def one_dirichlet_val(point):
     return 1.
 
+def minus_one_dirichlet_val(point):
+    return -1.
+
 # Dirichlet boundary info
 # [plane, direction, displacement]
 # number of elements in plane, direction, displacement should match
-dirichlet_bc_info = [[left] * 3 + [right] * 3, 
-                     [0, 1, 2] * 2, 
-                     [zero_dirichlet_val] * 3 + [one_dirichlet_val] * 3]
+dirichlet_bc_info = [[left]*3 + [right]*3, 
+                     [0, 1, 2]*2, 
+                     [minus_one_dirichlet_val] + [zero_dirichlet_val]*2 + [one_dirichlet_val] + [zero_dirichlet_val]*2]
 
 # Neumann boundary locations
-# "get_surface_maps" performs surface integral to get the traction
 location_fns = [right]
 
 # Instance of the problem
@@ -214,7 +216,7 @@ problem = LinearElasticity(mesh,
                            vec=3,
                            dim=3,
                            ele_type=ele_type,
-                           dirichlet_bc_info=dirichlet_bc_info,)
+                           dirichlet_bc_info=dirichlet_bc_info)
                         #    location_fns=location_fns)
 
 # AD wrapper : critical step that makes the problem solver differentiable
@@ -272,11 +274,9 @@ r_bound = (0, (min(bound_diff[0], bound_diff[1]) / 2) * 0.99) # 1% less than the
 h_bound = (0, (bound_diff[2] / 2) * 0.99)
 
 # Initial guess
-rho_ini = np.array([bound_sum[0]/2, bound_sum[1]/2, bound_sum[2]/2, 0.01])
-rho_ini_normalized = np.array([normalize(rho_ini[0], bound_min[0], bound_max[0]),
-                               normalize(rho_ini[1], bound_min[1], bound_max[1]),
-                               normalize(rho_ini[2], bound_min[2], bound_max[2]),
-                               normalize(rho_ini[3], 0., r_bound[1])])
+rho_ini = np.array([bound_sum[0]/2])
+rho_ini = rho_ini.at[0].set(1000.)
+rho_ini_normalized = np.array([normalize(rho_ini[0], bound_min[0], bound_max[0])])
 
 # Initial solution
 start_time = time.time() # Start timing
