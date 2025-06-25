@@ -314,6 +314,11 @@ minutes = int((elapsed_time % 3600) // 60)
 seconds = int(elapsed_time % 60)
 print(f"Total optimization runtime: {hours}h {minutes}m {seconds}s")
 print("Total Iteration:", output_sol.counter)
+x_unnormalized = unnormalize(params[-1][0], bound_min[0], bound_max[0])
+y_unnormalized = unnormalize(params[-1][1], bound_min[1], bound_max[1])
+z_unnormalized = unnormalize(params[-1][2], bound_min[2], bound_max[2])
+final_param_unnormalized = np.array([x_unnormalized, y_unnormalized, z_unnormalized])
+print(f"Final Parameters:{final_param_unnormalized}")
 
 # Plot the optimization results
 obj = onp.array(outputs)
