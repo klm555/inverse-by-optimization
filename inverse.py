@@ -22,7 +22,7 @@ logger.setLevel(logging.DEBUG)
 # Save setup
 file_dir = 'data/inverse'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'init1000_790-sigmoid1-two_nonzero_dirichlet'
+file_name = 'init1000_790_788-sigmoid0.005-two_nonzero_dirichlet'
 
 # Load data (measured displacement)
 sol_measured = onp.loadtxt('two_nonzero_dirichlet.txt') # (number of nodes, 3) in 3D
@@ -83,7 +83,7 @@ class Geometry:
         # Point indices
         is_2d = self.cen_z == None # True if "self.cen_z" is None
         # Sharpness for sigmoid
-        k = 1.0
+        k = 0.005
         # Squared distances
         domain_squared = (self.points[:,0] - self.cen_x)**2 + (self.points[:,1] - self.cen_y)**2
         r_squared = self.length ** 2
@@ -164,12 +164,12 @@ class LinearElasticity(Problem):
         r_max = (min(bound_diff[0], bound_diff[1]) / 2) * 0.99 # 1% less than the boundary
         h_max = (bound_diff[2] / 2) * 0.99
         # y = normalize((bound_min[1] + bound_max[1]) / 2, bound_min[1], bound_max[1])
-        z = normalize((bound_min[2] + bound_max[2]) / 2, bound_min[2], bound_max[2])
-        length = normalize(4.0, 0, r_max)
-        height = normalize(0.6, 0, h_max)
+        # z = normalize((bound_min[2] + bound_max[2]) / 2, bound_min[2], bound_max[2])
+        length = normalize(4.0, 0, r_max) # default:4.0
+        height = normalize(0.6, 0, h_max) # default:0.6
         
         # Inner domain indices
-        inner_domain = Geometry(params[0], params[1], z, 
+        inner_domain = Geometry(params[0], params[1], params[2], 
                                 length, height, 
                                 self.fes[0].cells, 
                                 self.fes[0].points)
@@ -275,10 +275,11 @@ h_bound = (0, (bound_diff[2] / 2) * 0.99)
 
 # Initial guess
 # rho_ini = np.array([bound_sum[0]/2])
-rho_ini = np.array([1000., 790.])
+rho_ini = np.array([1000., 790., 788.])
 x_ini_normalized = normalize(rho_ini[0], bound_min[0], bound_max[0])
 y_ini_normalized = normalize(rho_ini[1], bound_min[1], bound_max[1])
-rho_ini_normalized = np.array([x_ini_normalized, y_ini_normalized])
+z_ini_normalized = normalize(rho_ini[2], bound_min[2], bound_max[2])
+rho_ini_normalized = np.array([x_ini_normalized, y_ini_normalized, z_ini_normalized])
 
 # Initial solution
 start_time = time.time() # Start timing
@@ -289,10 +290,11 @@ save_sol(problem.fes[0],
          cell_infos=[('theta', np.ones(problem.fes[0].num_cells))])
 
 # Exact solution
-rho_exact = np.array([bound_sum[0]/2, bound_sum[1]/2])
+rho_exact = np.array([bound_sum[0]/2, bound_sum[1]/2, bound_sum[2]/2]) # center of the domain
 x_cen_normalized = normalize(rho_exact[0], bound_min[0], bound_max[0])
 y_cen_normalized = normalize(rho_exact[1], bound_min[1], bound_max[1])
-rho_exact_normalized = np.array([x_cen_normalized, y_cen_normalized])
+z_cen_normalized = normalize(rho_exact[2], bound_min[2], bound_max[2])
+rho_exact_normalized = np.array([x_cen_normalized, y_cen_normalized, z_cen_normalized])
 exact_obj = J_total(rho_exact_normalized)
 
 # Optimization setup
