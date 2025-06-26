@@ -35,9 +35,9 @@ print('JAX backend:', jax.default_backend())
 print('Devices:', jax.devices())
 
 # Save setup
-file_dir = '../data/local_min_test/2var-sigmoid1-two_nonzero_dirichlet'
+file_dir = '../data/local_min_test/3var-sigmoid1-two_nonzero_dirichlet'
 os.makedirs(file_dir, exist_ok=True)
-file_name = '2var-sigmoid1-two_nonzero_dirichlet'
+file_name = '3var-sigmoid1-two_nonzero_dirichlet'
 
 # Load data (measured displacement)
 sol_measured = onp.loadtxt('../two_nonzero_dirichlet.txt') # (number of nodes, 3) in 3D
@@ -161,12 +161,12 @@ class LinearElasticity(Problem):
         r_max = (min(bound_diff[0], bound_diff[1]) / 2) # 1% less than the boundary
         h_max = (bound_diff[2] / 2)
         # y = normalize((bound_min[1] + bound_max[1]) / 2, bound_min[1], bound_max[1])
-        z = normalize((bound_min[2] + bound_max[2]) / 2, bound_min[2], bound_max[2])
+        # z = normalize((bound_min[2] + bound_max[2]) / 2, bound_min[2], bound_max[2])
         length = normalize(4.0, 0, r_max)
         height = normalize(0.6, 0, h_max)
         
         # Inner domain indices
-        inner_domain = Geometry(params[0], params[1], z, 
+        inner_domain = Geometry(params[0], params[1], params[2], 
                                 length, height, 
                                 self.fes[0].cells, 
                                 self.fes[0].points)
@@ -246,23 +246,26 @@ def J_grad(rho):
 
 # Set the max/min for the design variables
 bound_min, bound_max = np.min(mesh.points, axis=0), np.max(mesh.points, axis=0)
-x_points = np.linspace(bound_min[0], bound_max[0], 15)
-y_points = np.linspace(bound_min[1], bound_max[1], 15)
+x_points = np.linspace(bound_min[0], bound_max[0], 12)
+y_points = np.linspace(bound_min[1], bound_max[1], 6)
+z_points = np.linspace(bound_min[2], bound_max[2], 3)
 
 outputs = []
 count = 1
 start_time = time.time()
 for x in x_points:
     for y in y_points:
-        # Initial guess
-        x_normalized = normalize(x, bound_min[0], bound_max[0])
-        y_normalized = normalize(y, bound_min[1], bound_max[1])
-        rho_normalized = np.array([x_normalized, y_normalized])
-        # Objective function
-        output = J_total(rho_normalized)
-        outputs.append(output)
-        print("Iteration : %d" % count)
-        count += 1
+        for z in z_points:
+            # Initial guess
+            x_normalized = normalize(x, bound_min[0], bound_max[0])
+            y_normalized = normalize(y, bound_min[1], bound_max[1])
+            z_normalized = normalize(z, bound_min[2], bound_max[2])
+            rho_normalized = np.array([x_normalized, y_normalized, z_normalized])
+            # Objective function
+            output = J_total(rho_normalized)
+            outputs.append(output)
+            print("Iteration : %d" % count)
+            count += 1
 end_time = time.time()
 elapsed_time = end_time - start_time
 hours = int(elapsed_time // 3600)
@@ -273,22 +276,30 @@ print(f"Total running runtime: {hours}h {minutes}m {seconds}s")
 # Plot the optimization results
 x_center = (bound_min[0] + bound_max[0]) / 2
 y_center = (bound_min[1] + bound_max[1]) / 2
+z_center = (bound_min[2] + bound_max[2]) / 2
 obj_0 = J_total(np.array([normalize(x_center, bound_min[0], bound_max[0]),
-                normalize(y_center, bound_min[1], bound_max[1])]))
+                normalize(y_center, bound_min[1], bound_max[1]),
+                normalize(z_center, bound_min[2], bound_max[2])]))
 obj = onp.array(outputs)
 # Reshape 'obj' into a grid nx x ny
-obj_grid = obj.reshape(len(x_points), len(y_points))
+obj_grid = obj.reshape(len(x_points), len(y_points), len(z_points))
 
 # Mesh for plotting
-X, Y = onp.meshgrid(x_points, y_points, indexing='ij')
+X, Y, Z = onp.meshgrid(x_points, y_points, z_points)
 
-fig = plt.figure(figsize=(16.5, 1.9))
-contour_plot = plt.contourf(X, Y, obj_grid, levels=30, cmap='viridis')
-plt.colorbar(contour_plot, label='Objective value')
-plt.xlabel(r"x-coordinate", fontsize=14)
-plt.ylabel(r"y-coordinate", fontsize=14)
-plt.title('Objective function over x, y', fontsize=20)
-plt.tick_params(labelsize=20)
+fig = plt.figure(figsize=(12, 6))
+ax = fig.add_subplot(111, projection='3d')
+ax.set_box_aspect((16.5, 1.9, 0.32))
+scatter = ax.scatter(X.flatten(), Y.flatten(), Z.flatten(), c=obj_grid, cmap='viridis', s=20, alpha=0.5)
+ax.set_xlabel(r"x-coordinate")
+ax.set_ylabel(r"y-coordinate")
+ax.set_zlabel(r"z-coordinate")
+ax.set_xticks([])
+ax.set_yticks([])
+ax.set_zticks([])
+ax.set_title('Objective function over x, y', fontsize=16)
+# ax.tick_params(labelsize=20)
+fig.colorbar(scatter, label='Objective value', shrink=0.5)
 
 # Save
 plt.savefig(os.path.join(file_dir, '%s.png' %file_name), dpi=300, bbox_inches='tight')
