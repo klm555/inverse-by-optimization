@@ -22,7 +22,7 @@ logger.setLevel(logging.DEBUG)
 # Save setup
 file_dir = 'data/inverse'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'init1000_790_788-sigmoid0.005-two_nonzero_dirichlet'
+file_name = 'w4_h0.6-init1000_790_788-sigmoid0.005_1-two_nonzero_dirichlet'
 
 # Load data (measured displacement)
 sol_measured = onp.loadtxt('two_nonzero_dirichlet.txt') # (number of nodes, 3) in 3D
@@ -83,7 +83,8 @@ class Geometry:
         # Point indices
         is_2d = self.cen_z == None # True if "self.cen_z" is None
         # Sharpness for sigmoid
-        k = 0.005
+        k1 = 0.005
+        k2 = 1.0
         # Squared distances
         domain_squared = (self.points[:,0] - self.cen_x)**2 + (self.points[:,1] - self.cen_y)**2
         r_squared = self.length ** 2
@@ -91,10 +92,10 @@ class Geometry:
         h_squared = None if is_2d is None else self.height ** 2
 
         if is_2d: # 2D
-            point_indicators = jax.nn.sigmoid(k * (domain_squared - r_squared)) # (+): outside, (-): inside  
+            point_indicators = jax.nn.sigmoid(k1 * (domain_squared - r_squared)) # (+): outside, (-): inside  
         else: # 3D  
-            point_indicators = jax.nn.sigmoid(k * (domain_squared - r_squared))
-            z_indicators = jax.nn.sigmoid(k * (z_squared - h_squared))            
+            point_indicators = jax.nn.sigmoid(k1 * (domain_squared - r_squared))
+            z_indicators = jax.nn.sigmoid(k2 * (z_squared - h_squared))            
             # Choose maximum sigmoid value
             point_indicators = np.maximum(point_indicators, z_indicators)
 
