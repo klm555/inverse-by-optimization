@@ -35,12 +35,12 @@ print('JAX backend:', jax.default_backend())
 print('Devices:', jax.devices())
 
 # Save setup
-file_dir = '../data/local_min_test/3var-sigmoid1-two_nonzero_dirichlet'
+file_dir = '../data/local_min_test/3var-sigmoid1-dogbone_3'
 os.makedirs(file_dir, exist_ok=True)
-file_name = '3var-sigmoid1-two_nonzero_dirichlet'
+file_name = '3var-sigmoid0.005_-dogbone_3'
 
 # Load data (measured displacement)
-sol_measured = onp.loadtxt('../two_nonzero_dirichlet.txt') # (number of nodes, 3) in 3D
+sol_measured = onp.loadtxt('../dogbone_3.txt') # (number of nodes, 3) in 3D
 
 # Mesh info
 ele_type = 'TET4'
@@ -75,6 +75,8 @@ class Geometry:
             points: Mesh points
         """
         bound_min, bound_max = np.min(points, axis=0), np.max(points, axis=0)
+        bound_min = bound_min.at[1].set(785.321) # since y coords of dogbone shape is varying,
+        bound_max = bound_max.at[1].set(798.321) # but l-bfgs-b cannot set varying bounds, set them to be always inside the domain
         bound_diff = bound_max - bound_min
         r_max = min(bound_diff[0], bound_diff[1]) * 0.5 * 0.99 # 1% less than the boundary
         h_max = bound_diff[2] * 0.5 * 0.99
@@ -271,7 +273,7 @@ elapsed_time = end_time - start_time
 hours = int(elapsed_time // 3600)
 minutes = int((elapsed_time % 3600) // 60)
 seconds = int(elapsed_time % 60)
-print(f"Total running runtime: {hours}h {minutes}m {seconds}s")
+print(f"Total running time: {hours}h {minutes}m {seconds}s")
 
 # Plot the optimization results
 x_center = (bound_min[0] + bound_max[0]) / 2
