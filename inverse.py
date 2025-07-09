@@ -22,10 +22,10 @@ logger.setLevel(logging.DEBUG)
 # Save setup
 file_dir = 'data/inverse'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'w4_h0.6-init1000_790_788-sigmoid0.005_1-two_nonzero_dirichlet'
+file_name = 'init_cen-sigmoid0.005_0.1-dogbone_4'
 
 # Load data (measured displacement)
-sol_measured = onp.loadtxt('two_nonzero_dirichlet.txt') # (number of nodes, 3) in 3D
+sol_measured = onp.loadtxt('dogbone_4.txt') # (number of nodes, 3) in 3D
 
 # Mesh info
 ele_type = 'TET4'
@@ -82,9 +82,7 @@ class Geometry:
         """    
         # Point indices
         is_2d = self.cen_z == None # True if "self.cen_z" is None
-        # Sharpness for sigmoid
-        k1 = 0.005
-        k2 = 1.0
+        
         # Squared distances
         domain_squared = (self.points[:,0] - self.cen_x)**2 + (self.points[:,1] - self.cen_y)**2
         r_squared = self.length ** 2
@@ -297,6 +295,10 @@ y_cen_normalized = normalize(rho_exact[1], bound_min[1], bound_max[1])
 z_cen_normalized = normalize(rho_exact[2], bound_min[2], bound_max[2])
 rho_exact_normalized = np.array([x_cen_normalized, y_cen_normalized, z_cen_normalized])
 exact_obj = J_total(rho_exact_normalized)
+
+# Sharpness for sigmoid
+k1 = 0.005
+k2 = 1.0
 
 # Optimization setup
 numConstraints = 1
