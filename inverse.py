@@ -294,6 +294,10 @@ save_sol(problem.fes[0],
          os.path.join(file_dir, f'{file_name}/sol_000.vtu'),
          cell_infos=[('theta', np.ones(problem.fes[0].num_cells))])
 
+# Sharpness for sigmoid
+k1 = 0.005
+k2 = 1.0
+
 # Exact solution
 rho_exact = np.array([bound_sum[0]/2, bound_sum[1]/2, bound_sum[2]/2]) # center of the domain
 x_cen_normalized = normalize(rho_exact[0], bound_min[0], bound_max[0])
@@ -301,10 +305,6 @@ y_cen_normalized = normalize(rho_exact[1], bound_min[1], bound_max[1])
 z_cen_normalized = normalize(rho_exact[2], bound_min[2], bound_max[2])
 rho_exact_normalized = np.array([x_cen_normalized, y_cen_normalized, z_cen_normalized])
 exact_obj = J_total(rho_exact_normalized)
-
-# Sharpness for sigmoid
-k1 = 0.005
-k2 = 1.0
 
 # Optimization setup
 numConstraints = 1
