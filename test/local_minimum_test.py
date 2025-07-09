@@ -159,6 +159,8 @@ class LinearElasticity(Problem):
     def set_params(self, params): # params = [x, y, z, r, h]
         # Geometry class doesn't use 'flex_inds', and directly assigns 'theta' values to the cells
         bound_min, bound_max = np.min(self.fes[0].points, axis=0), np.max(self.fes[0].points, axis=0)
+        bound_min = bound_min.at[1].set(785.321) # since y coords of dogbone shape is varying,
+        bound_max = bound_max.at[1].set(798.321) # but l-bfgs-b cannot set varying bounds, set them to be always inside the domain
         bound_diff = bound_max - bound_min
         r_max = (min(bound_diff[0], bound_diff[1]) / 2) # 1% less than the boundary
         h_max = (bound_diff[2] / 2)
@@ -248,6 +250,8 @@ def J_grad(rho):
 
 # Set the max/min for the design variables
 bound_min, bound_max = np.min(mesh.points, axis=0), np.max(mesh.points, axis=0)
+bound_min = bound_min.at[1].set(785.321) # since y coords of dogbone shape is varying,
+bound_max = bound_max.at[1].set(798.321) # but l-bfgs-b cannot set varying bounds, set them to be always inside the domain
 x_points = np.linspace(bound_min[0], bound_max[0], 12)
 y_points = np.linspace(bound_min[1], bound_max[1], 6)
 z_points = np.linspace(bound_min[2], bound_max[2], 3)
