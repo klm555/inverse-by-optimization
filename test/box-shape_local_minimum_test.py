@@ -43,6 +43,8 @@ ele_type = 'TET4'
 cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
 Lx, Ly, Lz = 10., 2., 2.
 Nx, Ny, Nz = 25, 5, 5
+x_coord = np.linspace(0, Lx, 200+1)
+
 dim = 3
 # Meshes
 meshio_mesh = box_mesh_gmsh(Nx=Nx, Ny=Ny, Nz=Nz, Lx=Lx, Ly=Ly, Lz=Lz,
@@ -99,7 +101,7 @@ class Geometry:
                                  (self.points[:,1] >= bottom) & (self.points[:,1] <= top) &
                                  (self.points[:,2] >= z_bot) & (self.points[:,2] <= z_top))[0]
         # Indices of the cells
-        domain_cells = np.all(np.isin(self.cells, domain_points), axis=1)
+        domain_cells = np.any(np.isin(self.cells, domain_points), axis=1)
         flex_inds = np.where(domain_cells)[0]
         return flex_inds # array of shape (n,)
     
