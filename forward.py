@@ -16,7 +16,7 @@ logger.setLevel(logging.DEBUG)
 # Save setup
 file_dir = 'data/forward'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'two_nonzero_dirichlet'
+file_name = 'dogbone_4'
 
 # Elastic modulus
 E_inner = 1.0e-3 # Inner domain (soft material)
@@ -27,7 +27,7 @@ ele_type = 'TET4'
 cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
 dim = 3
 # Meshes
-msh_file = 'Dogbone_0.03.msh'
+msh_file = 'Dogbone_0.05.msh'
 meshio_mesh = meshio.read(msh_file) # meshio : 3rd party library
 mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
@@ -102,9 +102,11 @@ problem = LinearElasticity(mesh,
 # for more flexibility during the testing phase.
 
 # Inner domain parameters
-center_inner = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2
-length_inner = 4. # side length of the square / radius of the circle
-height_inner = 0.6
+# center_inner = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2
+center_inner_origin = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2
+# center_inner = center_inner_origin + np.array([42.0, -1.8, 0.0])
+length_inner = 2.5 # side length of the square / radius of the circle
+height_inner = 1.0
 
 # Inner domain
 class Geometry:
