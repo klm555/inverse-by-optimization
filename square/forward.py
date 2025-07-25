@@ -175,10 +175,11 @@ problem = LinearElasticity(mesh,
 # for more flexibility during the testing phase.
 
 # Inner domain parameters
-center_inner = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2
-length_inner = 4.0 # side length of the square / radius of the circle / length in major axis of the ellipse
+mid_point = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2 # mid_point = (20, 20)
+center_inner = mid_point + np.array([5, 10])
+length_inner = 5.0 # side length of the square / radius of the circle / length in major axis of the ellipse
 length2_inner = 2.0
-angle_inner = np.pi / 4 # radian
+angle_inner = np.pi / 3 # radian
 
 # Inner domain indices
 inner_domain = Geometry(center_inner, 
