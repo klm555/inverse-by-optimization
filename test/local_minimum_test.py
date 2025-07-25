@@ -1,17 +1,15 @@
 # TODO
 # check how it stops : f-based, g-based, x-based 
-# try make J to be very large 10**8
 # check whether the gradient sign changes
-# show more evidence if you convince it is local minimum!
 
-# need to be symmetric(same dirichlet in opposite)
 # do many cases() -> average
-# box shaped geometry with symmmetric meshes
-# can be the problem of the mesh
 
 import os
 import time
 from typing import List
+
+# Set JAX device (before importing jax)
+os.environ['JAX_PLATFORM_NAME'] = 'cpu' # or 'gpu'
 
 import jax
 import jax.numpy as np
@@ -31,6 +29,7 @@ import meshio
 import logging
 logger.setLevel(logging.DEBUG)
 
+# Check JAX backend and devices
 print('JAX backend:', jax.default_backend())
 print('Devices:', jax.devices())
 

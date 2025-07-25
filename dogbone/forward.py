@@ -1,6 +1,10 @@
 import os
 from typing import List
 
+# Set JAX device (before importing jax)
+os.environ['JAX_PLATFORM_NAME'] = 'cpu' # or 'gpu'
+
+import jax
 import jax.numpy as np
 from jax_fem.problem import Problem
 from jax_fem.solver import solver
@@ -12,6 +16,10 @@ import meshio
 
 import logging
 logger.setLevel(logging.DEBUG)
+
+# Check JAX backend and devices
+print('JAX backend:', jax.default_backend())
+print('Devices:', jax.devices())
 
 # Save setup
 file_dir = 'data/forward'
@@ -102,9 +110,9 @@ problem = LinearElasticity(mesh,
 # for more flexibility during the testing phase.
 
 # Inner domain parameters
-# center_inner = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2
+center_inner = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2
 center_inner_origin = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2
-# center_inner = center_inner_origin + np.array([42.0, -1.8, 0.0])
+center_inner = center_inner_origin + np.array([42.0, -1.8, 0.0])
 length_inner = 2.5 # side length of the square / radius of the circle
 height_inner = 1.0
 

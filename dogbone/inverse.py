@@ -2,6 +2,9 @@ import os
 import time
 from typing import List
 
+# Set JAX device (before importing jax)
+os.environ['JAX_PLATFORM_NAME'] = 'cpu' # or 'gpu'
+
 import jax
 import jax.numpy as np
 from jax_fem.problem import Problem
@@ -18,6 +21,10 @@ import meshio
 
 import logging
 logger.setLevel(logging.DEBUG)
+
+# Check JAX backend and devices
+print('JAX backend:', jax.default_backend())
+print('Devices:', jax.devices())
 
 # Save setup
 file_dir = 'data/inverse'
