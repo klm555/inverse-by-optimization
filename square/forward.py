@@ -1,6 +1,9 @@
 import os
 from typing import List
 
+# Set JAX device (before importing jax)
+os.environ['JAX_PLATFORM_NAME'] = 'cpu' # or 'gpu'
+
 import jax
 import jax.numpy as np
 from jax_fem.problem import Problem
@@ -9,10 +12,13 @@ from jax_fem.utils import save_sol
 from jax_fem.generate_mesh import rectangle_mesh, get_meshio_cell_type, Mesh
 from jax_fem import logger
 import numpy as onp
-import meshio
 
 import logging
 logger.setLevel(logging.DEBUG)
+
+# Check JAX backend and devices
+print('JAX backend:', jax.default_backend())
+print('Devices:', jax.devices())
 
 # Save setup
 file_dir = 'data/forward'
@@ -53,12 +59,20 @@ class Geometry:
         self.points: np.ndarray = points
         
     def circle(self) -> np.ndarray:
-        # Height
-        z_bot, z_top = self.center[2] - self.height, self.center[2] + self.height
-        # Indices of the points in the inner domain (x**2 + y**2 <= r**2) & (abs(z) <= h)            
-        domain_points = np.where(((self.points[:,0] - self.center[0])**2 +
-                                  (self.points[:,1] - self.center[1])**2 <= self.length ** 2) &
-                                 (self.points[:,2] >= z_bot) & (self.points[:,2] <= z_top))[0]
+        # Check dimensions
+        is_2d = self.height == None
+
+        if is_2d: # 2D
+            domain_points = np.where((self.points[:,0] - self.center[0])**2 +
+                                     (self.points[:,1] - self.center[1])**2 <= self.length ** 2)[0]
+        
+        else: # 3D
+            # Height
+            z_bot, z_top = self.center[2] - self.height, self.center[2] + self.height
+            # Indices of the points in the inner domain (x**2 + y**2 <= r**2) & (abs(z) <= h)            
+            domain_points = np.where(((self.points[:,0] - self.center[0])**2 +
+                                      (self.points[:,1] - self.center[1])**2 <= self.length ** 2) &
+                                     (self.points[:,2] >= z_bot) & (self.points[:,2] <= z_top))[0]
         # Indices of the cells
         domain_cells = np.any(np.isin(self.cells, domain_points), axis=1)
         flex_inds = np.where(domain_cells)[0]
@@ -68,7 +82,7 @@ class Geometry:
         # Indices of the points in the inner domain (x**2 + y**2 <= r**2) & (abs(z) <= h)            
         domain_points = np.where(((self.points[:,0] - self.center[0]) * np.cos(self.angle) + 
                                   (self.points[:,1] - self.center[1]) * np.sin(self.angle))**2 / self.length**2 +
-                                  ((self.points[:,0] - self.center[0]) * np.sin(self.angle) - 
+                                 ((self.points[:,0] - self.center[0]) * np.sin(self.angle) - 
                                   (self.points[:,1] - self.center[1]) * np.cos(self.angle))**2 / self.length2**2
                                   <= 1)[0]
         # Indices of the cells
@@ -141,9 +155,9 @@ def minus_one_dirichlet_val(point):
 # Dirichlet boundary info
 # [plane, direction, displacement]
 # number of elements in plane, direction, displacement should match
-dirichlet_bc_info = [[left]*3 + [right]*3, 
-                     [0, 1, 2]*2, 
-                     [minus_one_dirichlet_val] + [zero_dirichlet_val]*2 + [one_dirichlet_val] + [zero_dirichlet_val]*2]
+dirichlet_bc_info = [[left]*2 + [right]*2, 
+                     [0, 1]*2, 
+                     [minus_one_dirichlet_val] + [zero_dirichlet_val] + [one_dirichlet_val] + [zero_dirichlet_val]]
 
 # Neumann boundary locations
 # "get_surface_maps" performs surface integral to get the traction
@@ -161,16 +175,6 @@ problem = LinearElasticity(mesh,
 # for more flexibility during the testing phase.
 
 # Inner domain parameters
-# key = jax.random.PRNGKey(0) # Generate random center point
-# num_candidates = 10000
-# x_candidates = jax.random.uniform(key, shape=(num_candidates,), minval=-Lx, maxval=Lx)
-# y_candidates = jax.random.uniform(key, shape=(num_candidates,), minval=-Ly, maxval=Ly)
-# coords_candidates = np.column_stack((x_candidates, y_candidates))
-# center_inner = ((self.points[:,0] - self.center[0]) * np.cos(self.angle) + 
-#                 (self.points[:,1] - self.center[1]) * np.sin(self.angle))**2 / self.length**2 +
-#                 ((self.points[:,0] - self.center[0]) * np.sin(self.angle) - 
-#                 (self.points[:,1] - self.center[1]) * np.cos(self.angle))**2 / self.length2**2
-#                 <= 1
 center_inner = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2
 length_inner = 4.0 # side length of the square / radius of the circle / length in major axis of the ellipse
 length2_inner = 2.0
@@ -179,11 +183,11 @@ angle_inner = np.pi / 4 # radian
 # Inner domain indices
 inner_domain = Geometry(center_inner, 
                         length_inner, 
-                        length2_inner,
-                        angle_inner,
-                        problem.fes[0].cells, 
-                        problem.fes[0].points)
-flex_inds = inner_domain.circle()
+                        length2=length2_inner,
+                        angle=angle_inner,
+                        cells=problem.fes[0].cells, 
+                        points=problem.fes[0].points)
+flex_inds = inner_domain.ellipse()
 
 # Assign elastic modulus to entire domain
 full_params = E_outer * np.ones((problem.num_cells, 1)) # (num_cells, 1)
@@ -202,7 +206,7 @@ sol_list = solver(problem, solver_options={'umfpack_solver': {}})
 # Save
 vtu_name = 'vtk/%s.vtu' %file_name
 save_sol(problem.fes[0], 
-         sol_list[0],
+         np.hstack((sol_list[0], np.zeros((len(sol_list[0]), 1)))), 
          os.path.join(file_dir, vtu_name),
          cell_infos=[('elastic_modulus', elastic_modulus)]) 
 # 2nd arg makes the solution 3D, which enables warping in Paraview
