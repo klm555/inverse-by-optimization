@@ -68,17 +68,7 @@ class Geometry:
             angle: Rotation angle (for ellipses)
             cells: Mesh cells
             points: Mesh points
-        """
-        # TODO: need refactoring with unnormalization in the next step
-        bound_min, bound_max = np.min(points, axis=0), np.max(points, axis=0)
-        bound_diff = bound_max - bound_min
-        bound_sum = bound_max + bound_min
-        x_bound = (bound_min[0], bound_max[0])
-        y_bound = (bound_min[1], bound_max[1])
-        l_bound = (0, (min(bound_diff[0], bound_diff[1]) / 2) * 0.99) # 1% less than the boundary
-        l2_bound = (0, (min(bound_diff[0], bound_diff[1]) / 2) * 0.99)
-        angle_bound = (0, np.pi)
-        
+        """        
         # Unnormalize the parameters
         self.cen_x = unnormalize(cen_x, x_bound[0], x_bound[1])
         self.cen_y = unnormalize(cen_y, y_bound[0], y_bound[1])
@@ -166,10 +156,6 @@ class LinearElasticity(Problem):
 
     def set_params(self, params): # params = [x, y, z, r, h]
         # Geometry class doesn't use 'flex_inds', and directly assigns 'theta' values to the cells
-        # bound_min, bound_max = np.min(self.fes[0].points, axis=0), np.max(self.fes[0].points, axis=0)
-        # bound_diff = bound_max - bound_min
-        # r_max = (min(bound_diff[0], bound_diff[1]) / 2) * 0.99 # 1% less than the boundary
-        # h_max = (bound_diff[2] / 2) * 0.99
         # y = normalize((bound_min[1] + bound_max[1]) / 2, bound_min[1], bound_max[1])
         # length = normalize(4.0, 0, r_max) # default:4.0
         
