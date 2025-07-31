@@ -263,7 +263,7 @@ x_bound = (bound_min[0], bound_max[0])
 y_bound = (bound_min[1], bound_max[1])
 l_bound = (0, (min(bound_diff[0], bound_diff[1]) / 2) * 0.99) # 1% less than the boundary
 l2_bound = (0, (min(bound_diff[0], bound_diff[1]) / 2) * 0.99)
-angle_bound = (0, np.pi)
+angle_bound = (0, np.pi * 0.99)
 
 # Initial guess
 rho_ini = np.array([bound_sum[0]/2, bound_sum[1]/2, l_bound[1]/2, l2_bound[1]/2, angle_bound[1]/2]) # it doesn't work with 0.0
