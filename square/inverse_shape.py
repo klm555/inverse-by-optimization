@@ -301,7 +301,7 @@ optimizationParams = {'maxiter':100, 'disp':True} # 'ftol':1e-4
 # Optimize
 results = minimize(J_total, jac=J_grad, 
                    x0=rho_ini_normalized, 
-                   bounds=[(0.0001, 1)] * len(rho_ini), # normalized
+                   bounds=[(1e-5, 1)] * len(rho_ini), # normalized
                    options=optimizationParams, 
                    method='L-BFGS-B', callback=output_sol)
 end_time = time.time() # End timing
