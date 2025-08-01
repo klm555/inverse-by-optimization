@@ -119,11 +119,11 @@ class Geometry:
                                             / self.length**2 +
                                            ((self.points[:,0] - self.cen_x) * np.sin(self.angle) - 
                                             (self.points[:,1] - self.cen_y) * np.cos(self.angle))**2 
-                                            / self.length2**2))        
+                                            / self.length2**2 - 1))        
 
         # Cell indices cell (cell_indicators = [point1_indicators, point2_indicators, point3_indicators, point4_indicators])
         cell_indicators = point_indicators[self.cells] # Assign point indicators to cell indicators
-        ell_indicators = np.prod(cell_indicators, axis=1) # "1" if all points are 1
+        cell_indicators = np.prod(cell_indicators, axis=1) # "1" if all points are 1
         return cell_indicators # array (n,)
 
 # Weak forms
