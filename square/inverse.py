@@ -28,16 +28,16 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/inverse'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'ellipse_hole4'
+file_name = 'ellipse_hole-extended_domain'
 
 # Load data (measured displacement)
-sol_measured = onp.loadtxt('ellipse_hole.txt') # (number of nodes, 3) in 3D
+sol_measured = onp.loadtxt('ellipse_hole-extended_domain.txt') # (number of nodes, 3) in 3D
 
 # Mesh info
 ele_type = 'QUAD4'
 cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
-Lx, Ly = 40., 40. # domain
-Nx, Ny = 80, 80 # number of elements in x-dir, y-dir
+Lx, Ly = 80., 80. # domain
+Nx, Ny = 160, 160 # number of elements in x-dir, y-dir
 dim = 2
 # Meshes
 meshio_mesh = rectangle_mesh(Nx=Nx, Ny=Ny, domain_x=Lx, domain_y=Ly)
@@ -155,9 +155,8 @@ class LinearElasticity(Problem):
     #     return [surface_map]
 
     def set_params(self, params): # params = [x, y, z, r, h]
-        # Geometry class doesn't use 'flex_inds', and directly assigns 'theta' values to the cells
-        # y = normalize((bound_min[1] + bound_max[1]) / 2, bound_min[1], bound_max[1])
-        # length = normalize(4.0, 0, r_max) # default:4.0
+        # x = normalize(45., x_bound[0], x_bound[1])
+        # y = normalize(50., y_bound[0], y_bound[1])    
         
         # Inner domain indices
         inner_domain = Geometry(params[0], params[1], length=params[2], 
@@ -255,7 +254,8 @@ def output_sol(intermediate_result):
     return 
 output_sol.counter = 1
 
-# Set the max/min for the design variables  
+# Set the max/min for the design variables
+# TODO: make bound function to refactor the lines below  
 bound_min, bound_max = np.min(mesh.points, axis=0), np.max(mesh.points, axis=0)
 bound_diff = bound_max - bound_min
 bound_sum = bound_max + bound_min
@@ -286,10 +286,10 @@ save_sol(problem.fes[0],
          cell_infos=[('theta', np.ones(problem.fes[0].num_cells))])
 
 # Sharpness for sigmoid
-k1 = 1.5
+k1 = 500.
 
 # Exact solution
-mid_point = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2 # mid_point = (20, 20)
+mid_point = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2 # mid_point = (40, 40)
 cen_exact = mid_point + np.array([5, 10])
 rho_exact = np.array([cen_exact[0], cen_exact[1], 5.0, 2.0, np.pi/3]) # [x, y, l, l2, angle]
 x_exact_normalized = normalize(rho_exact[0], x_bound[0], x_bound[1])

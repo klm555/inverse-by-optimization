@@ -23,7 +23,7 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/forward'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'ellipse_hole'
+file_name = 'ellipse_hole-extended_domain'
 
 # Elastic modulus
 E_inner = 1.0e-3 # Inner domain (soft material)
@@ -32,8 +32,8 @@ E_outer = 2.35e3 # Outer domain (hard material)
 # Mesh info
 ele_type = 'QUAD4'
 cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
-Lx, Ly = 40., 40. # domain
-Nx, Ny = 80, 80 # number of elements in x-dir, y-dir
+Lx, Ly = 80., 80. # domain
+Nx, Ny = 160, 160 # number of elements in x-dir, y-dir
 dim = 2
 # Meshes
 meshio_mesh = rectangle_mesh(Nx=Nx, Ny=Ny, domain_x=Lx, domain_y=Ly)
