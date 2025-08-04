@@ -166,11 +166,10 @@ class LinearElasticity(Problem):
                                 points=self.fes[0].points)
         full_params = inner_domain.ellipse()
         # The line below is only needed in case of 3D problems!
-        # full_params = np.expand_dims(full_params, axis=1) # (n, 1)
-
-        # Match "full_params" to the number of quadrature points
-        thetas = np.repeat(full_params[:, None, :], self.fes[0].num_quads, axis=1) 
-
+        full_params = np.expand_dims(full_params, axis=1) # (n, 1)
+         # Match "full_params" to the number of quadrature points
+        thetas = np.repeat(full_params[:, None, :], self.fes[0].num_quads, axis=1) # (n, num_quads, 1)
+        # Geometry class doesn't use 'flex_inds', and directly assigns 'theta' values to the cells
         self.params = params
         self.full_params = full_params
         self.internal_vars = [thetas]
