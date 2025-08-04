@@ -28,7 +28,7 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/inverse'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'ellipse_hole-extended_domain-shape'
+file_name = 'ellipse_hole-extended_domain-radius'
 
 # Load data (measured displacement)
 sol_measured = onp.loadtxt('ellipse_hole-extended_domain.txt') # (number of nodes, 3) in 3D
@@ -158,7 +158,7 @@ class LinearElasticity(Problem):
         # Geometry class doesn't use 'flex_inds', and directly assigns 'theta' values to the cells
         x = normalize(45., x_bound[0], x_bound[1])
         y = normalize(50., y_bound[0], y_bound[1])
-        angle = normalize(np.pi/3, angle_bound[0], angle_bound[1])        
+        angle = normalize(np.pi/3, angle_bound[0], angle_bound[1])
 
         # Inner domain indices
         inner_domain = Geometry(x, y, length=params[0], 
@@ -173,7 +173,7 @@ class LinearElasticity(Problem):
         # Geometry class doesn't use 'flex_inds', and directly assigns 'theta' values to the cells
         self.params = params
         self.full_params = full_params
-        self.internal_vars = [thetas]       
+        self.internal_vars = [thetas]
 
 # Boundary Locations
 def left(point):
@@ -222,7 +222,7 @@ def J_total(params): # J(u(theta), theta)
     # Data term
     u_difference = sol_measured - sol_list[0]
     # Regularization term
-    lambda_reg = 0. #1e-9
+    lambda_reg = 0 #1e-9
     u_grad = problem.fes[0].sol_to_grad(sol_list[0])
     l2_reg_term = lambda_reg * np.linalg.norm(u_grad)**2 # l2 regularization
     # Objective function
@@ -312,7 +312,7 @@ seconds = int(elapsed_time % 60)
 l_unnormalized = unnormalize(results.x[0], l_bound[0], l_bound[1])
 l2_unnormalized = unnormalize(results.x[1], l2_bound[0], l2_bound[1])
 final_param_unnormalized = np.array([l_unnormalized, l2_unnormalized])
-final_param = np.concatenate((np.array([25., 30.]), final_param_unnormalized, np.array([np.pi/3]))) # [x, y, l, l2, angle]
+final_param = np.concatenate((np.array([45., 50.]), final_param_unnormalized, np.array([np.pi/3]))) # [x, y, l, l2, angle]
 
 # Print log and save to text file
 log_info = f"""Total optimization runtime: {hours}h {minutes}m {seconds}s
