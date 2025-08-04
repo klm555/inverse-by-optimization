@@ -166,7 +166,7 @@ class LinearElasticity(Problem):
         full_params = inner_domain.ellipse()
         # The line below is only needed in case of 3D problems!
         full_params = np.expand_dims(full_params, axis=1) # (n, 1)
-         # Match "full_params" to the number of quadrature points
+        # Match "full_params" to the number of quadrature points
         thetas = np.repeat(full_params[:, None, :], self.fes[0].num_quads, axis=1) # (n, num_quads, 1)
         # Geometry class doesn't use 'flex_inds', and directly assigns 'theta' values to the cells
         self.params = params
@@ -216,7 +216,7 @@ fwd_pred = ad_wrapper(problem, solver_options={'umfpack_solver': {}}, adjoint_so
 # TODO: try TV regularization
 def J_total(params): # J(u(theta), theta)
     # Solve w/ params
-    sol_list = fwd_pred(params) 
+    sol_list = fwd_pred(params)
     # Data term
     u_difference = sol_measured - sol_list[0]
     # Regularization term
