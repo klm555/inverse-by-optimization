@@ -28,16 +28,16 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/inverse'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'ellipse_hole_coords'
+file_name = 'ellipse_hole-extended_domain-coords'
 
 # Load data (measured displacement)
-sol_measured = onp.loadtxt('ellipse_hole.txt') # (number of nodes, 3) in 3D
+sol_measured = onp.loadtxt('ellipse_hole-extended_domain.txt') # (number of nodes, 3) in 3D
 
 # Mesh info
 ele_type = 'QUAD4'
 cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
-Lx, Ly = 40., 40. # domain
-Nx, Ny = 80, 80 # number of elements in x-dir, y-dir
+Lx, Ly = 80., 80. # domain
+Nx, Ny = 160, 160 # number of elements in x-dir, y-dir
 dim = 2
 # Meshes
 meshio_mesh = rectangle_mesh(Nx=Nx, Ny=Ny, domain_x=Lx, domain_y=Ly)
@@ -156,11 +156,12 @@ class LinearElasticity(Problem):
 
     def set_params(self, params): # params = [x, y, z, r, h]
         # Geometry class doesn't use 'flex_inds', and directly assigns 'theta' values to the cells
+        length = normalize(params[2], l_bound[0], l_bound[1])
         length2 = normalize(2.0, l2_bound[0], l2_bound[1])
         angle = normalize(np.pi/3, angle_bound[0], angle_bound[1])        
 
         # Inner domain indices
-        inner_domain = Geometry(params[0], params[1], length=params[2], 
+        inner_domain = Geometry(params[0], params[1], length=length, 
                                 length2=length2, angle=angle, 
                                 cells=self.fes[0].cells, 
                                 points=self.fes[0].points)
@@ -266,12 +267,11 @@ l2_bound = (0, (min(bound_diff[0], bound_diff[1]) / 2) * 0.99)
 angle_bound = (0, np.pi)
 
 # Initial guess
-rho_ini = np.array([bound_sum[0]/2, bound_sum[1]/2, l_bound[1]/2]) # it doesn't work with 0.0
+rho_ini = np.array([bound_sum[0]/2, bound_sum[1]/2]) # it doesn't work with 0.0
 # rho_ini = np.array([bound_sum[0]/2, bound_sum[1]/2, 0.1, 0.1, 1]) # it doesn't work with 0.0
 x_ini_normalized = normalize(rho_ini[0], x_bound[0], x_bound[1])
 y_ini_normalized = normalize(rho_ini[1], y_bound[0], y_bound[1])
-l_ini_normalized = normalize(rho_ini[2], l_bound[0], l_bound[1])
-rho_ini_normalized = np.array([x_ini_normalized, y_ini_normalized, l_ini_normalized])
+rho_ini_normalized = np.array([x_ini_normalized, y_ini_normalized])
 
 # Initial solution
 start_time = time.time() # Start timing
@@ -287,11 +287,10 @@ k1 = 1.5
 # Exact solution
 mid_point = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2 # mid_point = (20, 20)
 cen_exact = mid_point + np.array([5, 10])
-rho_exact = np.array([cen_exact[0], cen_exact[1], 5.0]) # [x, y, l, l2, angle]
+rho_exact = np.array([cen_exact[0], cen_exact[1]]) # [x, y, l, l2, angle]
 x_exact_normalized = normalize(rho_exact[0], x_bound[0], x_bound[1])
 y_exact_normalized = normalize(rho_exact[1], y_bound[0], y_bound[1])
-l_exact_normalized = normalize(rho_exact[2], l_bound[0], l_bound[1])
-rho_exact_normalized = np.array([x_exact_normalized, y_exact_normalized, l_exact_normalized])
+rho_exact_normalized = np.array([x_exact_normalized, y_exact_normalized])
 exact_obj = J_total(rho_exact_normalized)
 
 # Optimization setup
@@ -313,9 +312,8 @@ seconds = int(elapsed_time % 60)
 # Unnormalize the final parameters
 x_unnormalized = unnormalize(results.x[0], x_bound[0], x_bound[1])
 y_unnormalized = unnormalize(results.x[1], y_bound[0], y_bound[1])
-l_unnormalized = unnormalize(results.x[2], l_bound[0], l_bound[1])
-final_param_unnormalized = np.array([x_unnormalized, y_unnormalized, l_unnormalized])
-final_param = np.concatenate((final_param_unnormalized, np.array([2.0, np.pi/3])))
+final_param_unnormalized = np.array([x_unnormalized, y_unnormalized])
+final_param = np.concatenate((final_param_unnormalized, np.array([5.0, 2.0, np.pi/3])))
 
 # Print log and save to text file
 log_info = f"""Total optimization runtime: {hours}h {minutes}m {seconds}s

@@ -28,16 +28,16 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/inverse'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'ellipse_hole_shape'
+file_name = 'ellipse_hole-extended_domain-shape'
 
 # Load data (measured displacement)
-sol_measured = onp.loadtxt('ellipse_hole.txt') # (number of nodes, 3) in 3D
+sol_measured = onp.loadtxt('ellipse_hole-extended_domain.txt') # (number of nodes, 3) in 3D
 
 # Mesh info
 ele_type = 'QUAD4'
 cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
-Lx, Ly = 40., 40. # domain
-Nx, Ny = 80, 80 # number of elements in x-dir, y-dir
+Lx, Ly = 80., 80. # domain
+Nx, Ny = 160, 160 # number of elements in x-dir, y-dir
 dim = 2
 # Meshes
 meshio_mesh = rectangle_mesh(Nx=Nx, Ny=Ny, domain_x=Lx, domain_y=Ly)
@@ -156,8 +156,8 @@ class LinearElasticity(Problem):
 
     def set_params(self, params): # params = [x, y, z, r, h]
         # Geometry class doesn't use 'flex_inds', and directly assigns 'theta' values to the cells
-        x = normalize(25., x_bound[0], x_bound[1])
-        y = normalize(30., y_bound[0], y_bound[1])        
+        x = normalize(45., x_bound[0], x_bound[1])
+        y = normalize(50., y_bound[0], y_bound[1])    
 
         # Inner domain indices
         inner_domain = Geometry(x, y, length=params[0], 
@@ -282,7 +282,7 @@ save_sol(problem.fes[0],
          cell_infos=[('theta', np.ones(problem.fes[0].num_cells))])
 
 # Sharpness for sigmoid
-k1 = 1.0
+k1 = 100.
 
 # Exact solution
 mid_point = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2 # mid_point = (20, 20)
@@ -315,7 +315,7 @@ l_unnormalized = unnormalize(results.x[0], l_bound[0], l_bound[1])
 l2_unnormalized = unnormalize(results.x[1], l2_bound[0], l2_bound[1])
 angle_unnormalized = unnormalize(results.x[2], angle_bound[0], angle_bound[1])
 final_param_unnormalized = np.array([l_unnormalized, l2_unnormalized, angle_unnormalized])
-final_param = np.concatenate((np.array([25., 30.]), final_param_unnormalized))
+final_param = np.concatenate((np.array([45., 50.]), final_param_unnormalized)) # [x, y, l, l2, angle]
 
 # Print log and save to text file
 log_info = f"""Total optimization runtime: {hours}h {minutes}m {seconds}s
