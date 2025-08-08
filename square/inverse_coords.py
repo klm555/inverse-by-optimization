@@ -156,7 +156,7 @@ class LinearElasticity(Problem):
 
     def set_params(self, params): # params = [x, y, z, r, h]
         # Geometry class doesn't use 'flex_inds', and directly assigns 'theta' values to the cells
-        length = normalize(params[2], l_bound[0], l_bound[1])
+        length = normalize(5.0, l_bound[0], l_bound[1])
         length2 = normalize(2.0, l2_bound[0], l2_bound[1])
         angle = normalize(np.pi/3, angle_bound[0], angle_bound[1])        
 
