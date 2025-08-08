@@ -272,7 +272,6 @@ rho_ini_normalized = np.array([x_ini_normalized, y_ini_normalized,
 k_ini = 1.
 
 # Optimization setup
-numConstraints = 1
 optimizationParams = {'maxiter':100, 'disp':True} # 'ftol':1e-4
 
 # Optimize
@@ -342,7 +341,7 @@ start_time = time.time() # Start timing
 optimal_k = minimize(J_k,
                      x0=k_ini, 
                      bounds=[(1e-5, 1)], # normalized
-                     options=optimizationParams, 
+                     options={'maxiter': 20, 'disp': True}, 
                      method='Nelder-Mead',)
 
 ###########    For the final optimization step    ###########
