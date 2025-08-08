@@ -288,61 +288,46 @@ class ParamOptimizer():
         self.counter = 1
         self.results = None
         problem.k = k[0]
-        self.inner_lr = 1e-2 # Learning rate for the inner optimization
-        self.inner_steps = 50 # Number of gradient descent steps for the inner loop
 
-    def save_progress(self, params, i):
-        """Saves the vtu file for a given state of the inner optimization."""
-        sol_list = fwd_pred(params)
-        vtu_name = f'{file_name}/sol_k={problem.k:.2f}_step={i:03d}.vtu'
+    # Solution(u) from forward problem
+    def output_sol(self, intermediate_result):
+        # Solve
+        sol_list = fwd_pred(intermediate_result.x)
+        # Remove previous solution
+
+        # Save vtu
+        vtu_name = f'{file_name}/sol_{self.counter:03d}.vtu'
         save_sol(problem.fes[0], 
-                 np.hstack((sol_list[0], np.zeros((len(sol_list[0]), 1)))), 
-                 os.path.join(file_dir, vtu_name), 
-                 cell_infos=[('theta', problem.full_params[:, 0])])
-        
-        obj_val = J_total(params)
-        print(f"Inner Step: {i}, Obj: {obj_val}")
-        self.outputs.append(obj_val)
-        self.params.append(params)
+                    np.hstack((sol_list[0], np.zeros((len(sol_list[0]), 1)))), 
+                    os.path.join(file_dir, vtu_name), 
+                    cell_infos=[('theta', problem.full_params[:, 0])])
+        print(f"Iteration:{self.counter}")
+        print(f"Obj:{intermediate_result.fun}")
+        self.outputs.append(intermediate_result.fun)
+        self.params.append(intermediate_result.x)
+        self.counter += 1
+        return
+
+    # self.output_sol = output_sol
 
     def __call__(self):
-        """
-        Runs a fixed number of gradient descent steps for the inner optimization problem.
-        This entire method is differentiable by JAX.
-        """
-        
-        # Use a closure to define the loss function for the inner loop
-        def loss_fn(rho):
-            return J_total(rho)
+        # TODO: is this "initial solution" really needed?
+        # Initial solution
+        # self.params = self.params + [self.rho_ini]
+        # save_sol(problem.fes[0], 
+        #          np.hstack(np.ones((len(sol_measured), 4))),
+        #          os.path.join(file_dir, f'{file_name}/sol_000.vtu'),
+        #          cell_infos=[('theta', np.ones(problem.fes[0].num_cells))])
 
-        grad_fn = jax.grad(loss_fn)
-
-        # Initial parameters for the inner loop
-        rho = rho_ini_normalized
-        
-        # Simple gradient descent loop
-        for i in range(self.inner_steps):
-            grad = grad_fn(rho)
-            rho = rho - self.inner_lr * grad
-            # Optional: Project back into bounds [0, 1] after each step
-            rho = np.clip(rho, 0., 1.)
-
-        # After the loop, store the final optimized parameters
-        # We create a simple object similar to SciPy's result for consistency
-        class InnerResult:
-            def __init__(self, x, fun):
-                self.x = x
-                self.fun = fun
-
-        final_loss = loss_fn(rho)
-        self.results = InnerResult(x=rho, fun=final_loss)
+        results = minimize(J_total, jac=J_grad,
+                            x0=rho_ini_normalized,
+                            bounds=[(1e-5, 1)] * len(rho_ini),
+                            options=optimizationParams,
+                            method='L-BFGS-B',
+                            callback=self.output_sol)
         self.k = problem.k
-        
-        # For debugging: save the state at the end of the inner loop
-        # self.save_progress(rho, self.inner_steps)
-
-        return self.results
-
+        self.results = results
+        return results
 
 # Exact solution
 mid_point = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2 # mid_point = (40, 40)
