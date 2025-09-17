@@ -24,7 +24,7 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/forward'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'eval_solutions-dirhchlet10'
+file_name = 'eval_solutions-dirhchlet10-size_L'
 
 # Elastic modulus
 E_inner = 1.0e-3 # Inner domain (soft material)
@@ -183,9 +183,9 @@ problem = LinearElasticity(mesh,
 
 # Inner domain parameters
 mid_point = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2 # mid_point = (20, 20)
-center_inner = mid_point + np.array([5, 10])
-length_inner = 5.0 # side length of the square / radius of the circle / length in major axis of the ellipse
-length2_inner = 2.0
+center_inner = mid_point + np.array([5, 5]) # default : 5, 5
+length_inner = 10.0 # side length of the square / radius of the circle / length in major axis of the ellipse
+length2_inner = 6.0 # default : 5, 2, pi/3
 angle_inner = np.pi / 3 # radian
 
 # Inner domain indices
