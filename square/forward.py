@@ -24,16 +24,16 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/forward'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'eval_solutions-dirhchlet10-size_L'
+file_name = 'eval_solutions-no_hole-unit_domain'
 
 # Elastic modulus
 E_inner = 1.0e-3 # Inner domain (soft material)
-E_outer = 2.35e3 # Outer domain (hard material)
+E_outer = 1.0e3 # Outer domain (hard material)
 
 # Mesh info
 ele_type = 'QUAD4'
 cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
-Lx, Ly = 40., 40. # domain
+Lx, Ly = 1., 1. # domain
 Nx, Ny = 200, 200 # number of elements in x-dir, y-dir
 dim = 2
 # Meshes
@@ -153,18 +153,18 @@ def one_dirichlet_val(point):
 def minus_one_dirichlet_val(point):
     return -1.
 
-def ten_dirichlet_val(point):
-    return 10.
+def custom_dirichlet_val(point):
+    return 0.025
 
-def minus_ten_dirichlet_val(point):
-    return -10.
+def minus_custom_dirichlet_val(point):
+    return -0.025
 
 # Dirichlet boundary info
 # [plane, direction, displacement]
 # number of elements in plane, direction, displacement should match
 dirichlet_bc_info = [[left]*2 + [right]*2, 
                      [0, 1]*2, 
-                     [minus_ten_dirichlet_val] + [zero_dirichlet_val] + [ten_dirichlet_val] + [zero_dirichlet_val]]
+                     [minus_custom_dirichlet_val] + [zero_dirichlet_val] + [custom_dirichlet_val] + [zero_dirichlet_val]]
 
 # Neumann boundary locations
 # "get_surface_maps" performs surface integral to get the traction
@@ -183,9 +183,9 @@ problem = LinearElasticity(mesh,
 
 # Inner domain parameters
 mid_point = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2 # mid_point = (20, 20)
-center_inner = mid_point + np.array([5, 5]) # default : 5, 5
-length_inner = 10.0 # side length of the square / radius of the circle / length in major axis of the ellipse
-length2_inner = 6.0 # default : 5, 2, pi/3
+center_inner = mid_point + np.array([0.125, 0.125]) # default : 5, 5
+length_inner = 0.0 # side length of the square / radius of the circle / length in major axis of the ellipse
+length2_inner = 0.0 # default : 5, 2, pi/3
 angle_inner = np.pi / 3 # radian
 
 # Inner domain indices
