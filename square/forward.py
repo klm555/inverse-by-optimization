@@ -33,7 +33,7 @@ E_outer = 1.0e3 # Outer domain (hard material)
 # Mesh info
 ele_type = 'QUAD4'
 cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
-Lx, Ly = 1., 1. # domain
+Lx, Ly = 2., 2. # domain
 Nx, Ny = 200, 200 # number of elements in x-dir, y-dir
 dim = 2
 # Meshes
@@ -154,10 +154,10 @@ def minus_one_dirichlet_val(point):
     return -1.
 
 def custom_dirichlet_val(point):
-    return 0.025
+    return 0.05
 
 def minus_custom_dirichlet_val(point):
-    return -0.025
+    return -0.05
 
 # Dirichlet boundary info
 # [plane, direction, displacement]
@@ -218,7 +218,6 @@ save_sol(problem.fes[0],
          os.path.join(file_dir, vtu_name),
          cell_infos=[('elastic_modulus', elastic_modulus)]) 
 # 2nd arg makes the solution 3D, which enables warping in Paraview
-onp.savetxt('%s.txt' %file_name, sol_list[0])
 
 # Save the result in JSON file
 with open('%s.json' %file_name, 'w') as f:
