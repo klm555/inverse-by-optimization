@@ -28,11 +28,16 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/inverse'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'ellipse_hole-extended_domain'
+file_name = 'load1_noise-0-inverse'
 
 # Load data (measured displacement)
-sol_measured = onp.loadtxt('ellipse_hole-extended_domain.txt') # (number of nodes, 3) in 3D
+sol_measured = onp.loadtxt('load1_noise-0.txt') # (number of nodes, 3) in 3D
 
+# Material Properties 
+mu = 3. # MPa
+lmbda = 148. # MPa
+
+# Mesh info
 ele_type = 'TET10'
 cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
 Lx, Ly, Lz = 1., 1., 0.05 # domain
@@ -45,59 +50,51 @@ meshio_mesh = box_mesh_gmsh(Nx=Nx, Ny=Ny, Nz=Nz,
 # Input mesh info into Mesh class
 mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
-# Helper function for normalizing parameters
-def normalize(val, vmin, vmax): # original params -> normalized params
-    return (val - vmin) / (vmax - vmin)
+# # Helper function for normalizing parameters
+# def normalize(val, vmin, vmax): # original params -> normalized params
+#     return (val - vmin) / (vmax - vmin)
 
-def unnormalize(val, vmin, vmax): # normalized params -> original params
-    return val * (vmax - vmin) + vmin
+# def unnormalize(val, vmin, vmax): # normalized params -> original params
+#     return val * (vmax - vmin) + vmin
+
+# Traction Distribution
+def traction_true(point):
+    return np.exp(-(np.power(point[0] - Lx/2., 2)) / (2.*(Lx/5.)**2))
 
 # Weak forms
 class HyperElasticity(Problem):
-    def custom_init(self): # TODO: integrate geometry with this?
-            self.fes[0].flex_inds = np.arange(len(self.fes[0].cells)) # "flex_inds" : idx of the inner domain cells
+    def custom_init(self):
+        self.fe = self.fes[0]
             
     # Tensor
     def get_tensor_map(self):
-        def stress(u_grad, theta): # stress tensor
-            Emax = 2.35e3
-            Emin = 1.0e-3
-            nu = 0.33
-            # penal = 3.
-            # E = Emin + (Emax - Emin)*theta[0]**penal
-            E = Emin + (Emax - Emin)*theta[0]
-            mu = E / (2.*(1+nu))
-            lmbda = E * nu / ((1+nu)*(1-2*nu))
-            # strain-displacement relation
-            epsilon = 0.5 * (u_grad + u_grad.T) # u_grad = 3x3
-            # stress-strain relation
-            sigma = lmbda * np.trace(epsilon) * np.eye(self.dim) + 2*mu*epsilon
-            return sigma
-        return stress
+        def psi(F):
+            kappa = lmbda + (2./3.) * mu
+            J = np.linalg.det(F)
+            Jinv = J**(-2./3.)
+            I1 = np.trace(F.T @ F)
+            energy = (mu/2.)*(Jinv*I1 - 3.) + (kappa/2.) * (J - 1.)**2.
+            return energy
 
-    # def get_surface_maps(self):
-    #     def surface_map(u, x): # traction
-    #         return np.array([-15., 0., 0.]) # tr_x = -15 ((-): tension, (+): compression)
-    #     return [surface_map]
+        P_fn = jax.grad(psi)
 
-    def set_params(self, params): # params = [x, y, z, r, h]
-        # x = normalize(45., x_bound[0], x_bound[1])
-        # y = normalize(50., y_bound[0], y_bound[1])    
+        def first_PK_stress(u_grad):
+            I = np.eye(self.dim)
+            F = u_grad + I
+            P = P_fn(F)
+            return P
         
-        # Inner domain indices
-        inner_domain = Geometry(params[0], params[1], length=params[2], 
-                                length2=params[3], angle=params[4], 
-                                cells=self.fes[0].cells, 
-                                points=self.fes[0].points)
-        full_params = inner_domain.ellipse()
-        # The line below is only needed in case of 3D problems!
-        full_params = np.expand_dims(full_params, axis=1) # (n, 1)
-        # Match "full_params" to the number of quadrature points
-        thetas = np.repeat(full_params[:, None, :], self.fes[0].num_quads, axis=1) # (n, num_quads, 1)
-        # Geometry class doesn't use 'flex_inds', and directly assigns 'theta' values to the cells
-        self.params = params
-        self.full_params = full_params
-        self.internal_vars = [thetas]
+        return first_PK_stress
+
+    def get_surface_maps(self):
+        def surface_map(u, x, load_value):
+            return np.array([0, load_value, 0])
+        return [surface_map]
+
+    def set_params(self, params):
+        surface_params = params
+        # Generally, [[surface1_params1, surface1_params2, ...], [surface2_params1, surface2_params2, ...], ...]
+        self.internal_vars = [[surface_params]]
 
 # Boundary Locations
 def bottom(point):
@@ -132,6 +129,25 @@ problem = HyperElasticity(mesh,
 
 # AD wrapper : critical step that makes the problem solver differentiable
 fwd_pred = ad_wrapper(problem, solver_options={'umfpack_solver': {}}, adjoint_solver_options={'umfpack_solver': {}})
+
+# Isotropic TV (L2) Loss
+def TV_reg(u, alpha=1, epsilon = 1e-6):
+    """
+    Args:
+        epsilon: small value to avoid division by zero
+    """
+    # np.roll: shifts the entire image one pixel to the right
+    u_shift_x = np.roll(u, shift=1, axis=1)
+    u_shift_y = np.roll(u, shift=1, axis=0)
+
+    # Zero out the boundary
+    u_shift_x = u_shift_x.at[:, 0].set(0.)
+    u_shift_y = u_shift_y.at[0, :].set(0.)
+
+    grad_x = u - u_shift_x
+    grad_y = u - u_shift_y
+
+    return 0.5 * alpha * np.sum(np.sqrt(grad_x**2 + grad_y**2 + epsilon))
 
 # Objective Function
 # TODO: try TV regularization

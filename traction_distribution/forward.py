@@ -24,7 +24,7 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/forward'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'eval_solutions-no_hole-unit_domain'
+file_name = 'load1_noise-0'
 
 # Material Properties
 # E = 1.0e3 
@@ -39,14 +39,14 @@ Nx, Ny, Nz = 60, 60, 2 # number of elements in x-dir, y-dir
 dim = 3
 # Meshes
 meshio_mesh = box_mesh_gmsh(Nx=Nx, Ny=Ny, Nz=Nz,
-                            Lx=Lx, Ly=Ly, Lz=Lz,
+                            domain_x=Lx, domain_y=Ly, domain_z=Lz,
                             data_dir=file_dir, ele_type=ele_type)
 # Input mesh info into Mesh class
 mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
 # Traction Distribution
 def traction_true(point):
-    return 1e5 * np.exp(-(np.power(point[0] - Lx/2., 2)) / (2.*(Lx/5.)**2))
+    return 1e-1 * np.exp(-(np.power(point[0] - Lx/2., 2)) / (2.*(Lx/5.)**2))
 
 class HyperElasticity(Problem):
     def get_tensor_map(self):
@@ -67,18 +67,6 @@ class HyperElasticity(Problem):
             return P
         
         return first_PK_stress
-
-    def get_tensor_map(self):
-        def stress(u_grad): # stress tensor
-            # nu = 0.33
-            # mu = E / (2.*(1+nu))
-            # lmbda = E * nu / ((1+nu)*(1-2*nu))
-            # strain-displacement relation
-            epsilon = 0.5 * (u_grad + u_grad.T) # u_grad = 3x3
-            # stress-strain relation
-            sigma = lmbda * np.trace(epsilon) * np.eye(self.dim) + 2*mu*epsilon
-            return sigma
-        return stress
 
     def get_surface_maps(self):
         def surface_map(u, x):
