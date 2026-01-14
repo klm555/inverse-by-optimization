@@ -157,11 +157,10 @@ def J_total(params): # J(u(theta), theta)
     # Data term
     u_difference = sol_measured - sol_list[0]
     # Regularization term
-    lambda_reg = 0 #1e-9
-    u_grad = problem.fes[0].sol_to_grad(sol_list[0])
-    l2_reg_term = lambda_reg * np.linalg.norm(u_grad)**2 # l2 regularization
+    alpha = 1. #1e-9
+    TV_reg_term = TV_reg(sol_list[0], alpha=alpha)
     # Objective function
-    J = 0.5 * np.linalg.norm(u_difference)**2 + 0.5 * l2_reg_term
+    J = 0.5 * np.linalg.norm(u_difference)**2 + 0.5 * TV_reg_term
     return J
 
 # Gradient of J
@@ -181,7 +180,7 @@ def output_sol(intermediate_result):
     save_sol(problem.fes[0], 
              np.hstack((sol_list[0], np.zeros((len(sol_list[0]), 1)))), 
              os.path.join(file_dir, vtu_name), 
-             cell_infos=[('theta', problem.full_params[:, 0])])
+             point_infos=[('traction', problem.full_params[:, 0])])
     print(f"Iteration:{output_sol.counter}")
     print(f"Obj:{intermediate_result.fun}")
     outputs.append(intermediate_result.fun)
@@ -190,28 +189,8 @@ def output_sol(intermediate_result):
     return 
 output_sol.counter = 1
 
-# Set the max/min for the design variables
-# TODO: make bound function to refactor the lines below  
-bound_min, bound_max = np.min(mesh.points, axis=0), np.max(mesh.points, axis=0)
-bound_diff = bound_max - bound_min
-bound_sum = bound_max + bound_min
-x_bound = (bound_min[0], bound_max[0])
-y_bound = (bound_min[1], bound_max[1])
-l_bound = (min(Lx/Nx, Ly/Ny), (min(bound_diff[0], bound_diff[1]) / 2) * 0.99) # 1% less than the boundary
-l2_bound = (min(Lx/Nx, Ly/Ny), (min(bound_diff[0], bound_diff[1]) / 2) * 0.99)
-angle_bound = (0, np.pi/2 * 0.99)
-
 # Initial guess
-rho_ini = np.array([bound_sum[0]/2, bound_sum[1]/2, l_bound[1]/2, l2_bound[1]/2, angle_bound[1]/2]) # it doesn't work with 0.0
-# rho_ini = np.array([bound_sum[0]/2, bound_sum[1]/2, 0.1, 0.1, 1]) # it doesn't work with 0.0
-x_ini_normalized = normalize(rho_ini[0], x_bound[0], x_bound[1])
-y_ini_normalized = normalize(rho_ini[1], y_bound[0], y_bound[1])
-l_ini_normalized = normalize(rho_ini[2], l_bound[0], l_bound[1])
-l2_ini_normalized = normalize(rho_ini[3], l2_bound[0], l2_bound[1])
-angle_ini_normalized = normalize(rho_ini[4], angle_bound[0], angle_bound[1])
-rho_ini_normalized = np.array([x_ini_normalized, y_ini_normalized, 
-                               l_ini_normalized, l2_ini_normalized, 
-                               angle_ini_normalized])
+rho_ini = np.ones_like(problem.fes[0].points[:,0]) # (num_nodes,)
 
 # Initial solution
 start_time = time.time() # Start timing
@@ -219,22 +198,8 @@ params = params + [rho_ini]
 save_sol(problem.fes[0], 
          np.hstack(np.ones((len(sol_measured), 4))),
          os.path.join(file_dir, f'{file_name}/sol_000.vtu'),
-         cell_infos=[('theta', np.ones(problem.fes[0].num_cells))])
+         point_infos=[('traction', np.ones(problem.fes[0].num_cells))])
 
-# Sharpness for sigmoid
-k1 = 500.
-
-# Exact solution
-mid_point = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2 # mid_point = (40, 40)
-cen_exact = mid_point + np.array([5, 10])
-rho_exact = np.array([cen_exact[0], cen_exact[1], 5.0, 2.0, np.pi/3]) # [x, y, l, l2, angle]
-x_exact_normalized = normalize(rho_exact[0], x_bound[0], x_bound[1])
-y_exact_normalized = normalize(rho_exact[1], y_bound[0], y_bound[1])
-l_exact_normalized = normalize(rho_exact[2], l_bound[0], l_bound[1])
-l2_exact_normalized = normalize(rho_exact[3], l2_bound[0], l2_bound[1])
-angle_exact_normalized = normalize(rho_exact[4], angle_bound[0], angle_bound[1])
-rho_exact_normalized = np.array([x_exact_normalized, y_exact_normalized, l_exact_normalized, l2_exact_normalized, angle_exact_normalized])
-exact_obj = J_total(rho_exact_normalized)
 
 # Optimization setup
 numConstraints = 1
@@ -242,8 +207,7 @@ optimizationParams = {'maxiter':100, 'disp':True} # 'ftol':1e-4
 
 # Optimize
 results = minimize(J_total, jac=J_grad, 
-                   x0=rho_ini_normalized, 
-                   bounds=[(1e-5, 1)] * len(rho_ini), # normalized
+                   x0=rho_ini, 
                    options=optimizationParams, 
                    method='L-BFGS-B', callback=output_sol)
 end_time = time.time() # End timing
@@ -252,22 +216,11 @@ hours = int(elapsed_time // 3600)
 minutes = int((elapsed_time % 3600) // 60)
 seconds = int(elapsed_time % 60)
 
-# Unnormalize the final parameters
-x_unnormalized = unnormalize(results.x[0], x_bound[0], x_bound[1])
-y_unnormalized = unnormalize(results.x[1], y_bound[0], y_bound[1])
-l_unnormalized = unnormalize(results.x[2], l_bound[0], l_bound[1])
-l2_unnormalized = unnormalize(results.x[3], l2_bound[0], l2_bound[1])
-angle_unnormalized = unnormalize(results.x[4], angle_bound[0], angle_bound[1])
-final_param_unnormalized = np.array([x_unnormalized, y_unnormalized, l_unnormalized, l2_unnormalized, angle_unnormalized])
 
 # Print log and save to text file
 log_info = f"""Total optimization runtime: {hours}h {minutes}m {seconds}s
 Total Iteration: {output_sol.counter}
-Sharpness: {k1}
-Final Parameters: {final_param_unnormalized}
-Exact Parameters: {rho_exact}
 Final Objective Value: {results.fun}
-Exact Objective Value: {exact_obj}
 """
 
 print(log_info)
@@ -287,7 +240,6 @@ print(f"Results saved to: {results_file_path}")
 obj = onp.array(outputs)
 plt.figure(1, figsize=(10, 8))
 plt.plot(onp.arange(len(obj)) + 1, obj, linestyle='-', linewidth=2, color='black')
-plt.axhline(y=exact_obj, color='r', linestyle='--', label='J = %f' % exact_obj)
 plt.xlabel(r"Optimization step", fontsize=20)
 plt.ylabel(r"Objective value", fontsize=20)
 plt.legend(fontsize=20)
