@@ -28,7 +28,7 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/inverse'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'ellipse_hole-extended_domain'
+file_name = 'ellipse_hole-extended_domain-TV_reg'
 
 # Load data (measured displacement)
 sol_measured = onp.loadtxt('ellipse_hole-extended_domain.txt') # (number of nodes, 3) in 3D
@@ -212,6 +212,25 @@ problem = LinearElasticity(mesh,
 # AD wrapper : critical step that makes the problem solver differentiable
 fwd_pred = ad_wrapper(problem, solver_options={'umfpack_solver': {}}, adjoint_solver_options={'umfpack_solver': {}})
 
+# TV Loss
+def TV_reg(u, alpha=1, epsilon = 1e-6):
+    """
+    Args:
+        epsilon: small value to avoid division by zero
+    """
+    # np.roll: shifts the entire image one pixel to the right
+    u_shift_x = np.roll(u, shift=1, axis=1)
+    u_shift_y = np.roll(u, shift=1, axis=0)
+
+    # Zero out the boundary (to prevent wrap-around effect of np.roll)
+    u_shift_x = u_shift_x.at[:, 0].set(0.)
+    u_shift_y = u_shift_y.at[0, :].set(0.)
+
+    grad_x = u - u_shift_x
+    grad_y = u - u_shift_y
+
+    return 0.5 * alpha * np.sum(np.sqrt(grad_x**2 + grad_y**2 + epsilon))
+
 # Objective Function
 # TODO: try TV regularization
 def J_total(params): # J(u(theta), theta)
@@ -220,11 +239,10 @@ def J_total(params): # J(u(theta), theta)
     # Data term
     u_difference = sol_measured - sol_list[0]
     # Regularization term
-    lambda_reg = 0 #1e-9
-    u_grad = problem.fes[0].sol_to_grad(sol_list[0])
-    l2_reg_term = lambda_reg * np.linalg.norm(u_grad)**2 # l2 regularization
+    alpha = 1
+    TV_reg_term = TV_reg(sol_list[0], alpha=alpha)
     # Objective function
-    J = 0.5 * np.linalg.norm(u_difference)**2 + 0.5 * l2_reg_term
+    J = 0.5 * np.linalg.norm(u_difference)**2 + 0.5 * TV_reg_term
     return J
 
 # Gradient of J
@@ -285,7 +303,7 @@ save_sol(problem.fes[0],
          cell_infos=[('theta', np.ones(problem.fes[0].num_cells))])
 
 # Sharpness for sigmoid
-k1 = 500.
+k1 = 10.
 
 # Exact solution
 mid_point = (np.max(mesh.points, axis=0) + np.min(mesh.points, axis=0)) / 2 # mid_point = (40, 40)
