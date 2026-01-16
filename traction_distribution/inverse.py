@@ -92,9 +92,28 @@ class HyperElasticity(Problem):
         return [surface_map]
 
     def set_params(self, params):
-        surface_params = params
-        # Generally, [[surface1_params1, surface1_params2, ...], [surface2_params1, surface2_params2, ...], ...]
-        self.internal_vars = [[surface_params]]
+        self.internal_vars_surfaces = []
+        # Interpolate params (nodal) to quadrature points for each defined boundary surface
+        for i in range(len(self.boundary_inds_list)):
+            var_index = 0 # We assume single variable system (u) for the mesh
+            
+            # Get connectivity and shape functions for this boundary
+            # cells_face: (num_selected_faces, num_nodes_per_elem_face)
+            cells_face = self.cells_list_face_list[i][var_index]
+            
+            # Fetch nodal values of parameters for the faces
+            # point_vals: (num_selected_faces, num_nodes_per_elem_face)
+            point_vals = params[cells_face] 
+            
+            # shape_vals: (num_selected_faces, num_face_quads, num_nodes_per_elem_face)
+            shape_vals = self.selected_face_shape_vals[i] 
+            
+            # Interpolate to quadrature points: sum_k (N_k * rho_k)
+            # vals_at_quads: (num_selected_faces, num_face_quads)
+            vals_at_quads = np.sum(point_vals[:, None, :] * shape_vals, axis=-1)
+            
+            # Append as the argument lists for the surface map functions
+            self.internal_vars_surfaces.append([vals_at_quads])
 
 # Boundary Locations
 def bottom(point):
@@ -130,7 +149,7 @@ problem = HyperElasticity(mesh,
 # AD wrapper : critical step that makes the problem solver differentiable
 fwd_pred = ad_wrapper(problem, solver_options={'umfpack_solver': {}}, adjoint_solver_options={'umfpack_solver': {}})
 
-# Isotropic TV (L2) Loss
+# TV Loss
 def TV_reg(u, alpha=1, epsilon = 1e-6):
     """
     Args:
@@ -140,7 +159,7 @@ def TV_reg(u, alpha=1, epsilon = 1e-6):
     u_shift_x = np.roll(u, shift=1, axis=1)
     u_shift_y = np.roll(u, shift=1, axis=0)
 
-    # Zero out the boundary
+    # Zero out the boundary (to prevent wrap-around effect of np.roll)
     u_shift_x = u_shift_x.at[:, 0].set(0.)
     u_shift_y = u_shift_y.at[0, :].set(0.)
 
@@ -180,7 +199,7 @@ def output_sol(intermediate_result):
     save_sol(problem.fes[0], 
              np.hstack((sol_list[0], np.zeros((len(sol_list[0]), 1)))), 
              os.path.join(file_dir, vtu_name), 
-             point_infos=[('traction', problem.full_params[:, 0])])
+             point_infos=[('traction', intermediate_result.x)])
     print(f"Iteration:{output_sol.counter}")
     print(f"Obj:{intermediate_result.fun}")
     outputs.append(intermediate_result.fun)
@@ -190,15 +209,15 @@ def output_sol(intermediate_result):
 output_sol.counter = 1
 
 # Initial guess
-rho_ini = np.ones_like(problem.fes[0].points[:,0]) # (num_nodes,)
-
+rho_ini = 0.01 * np.ones(problem.fes[0].num_total_nodes) # (num_nodes,)
+sol_list = fwd_pred(rho_ini)
 # Initial solution
 start_time = time.time() # Start timing
-params = params + [rho_ini]
-save_sol(problem.fes[0], 
-         np.hstack(np.ones((len(sol_measured), 4))),
-         os.path.join(file_dir, f'{file_name}/sol_000.vtu'),
-         point_infos=[('traction', np.ones(problem.fes[0].num_cells))])
+# params = params + [rho_ini]
+# save_sol(problem.fes[0], 
+#          np.ones((len(sol_measured), 4)),
+#          os.path.join(file_dir, f'{file_name}/sol_000.vtu'),
+#          point_infos=[('traction', rho_ini)])
 
 
 # Optimization setup
