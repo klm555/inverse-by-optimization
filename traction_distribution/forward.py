@@ -127,6 +127,7 @@ save_sol(problem.fes[0],
          os.path.join(file_dir, vtu_name),
          point_infos=[('traction', traction_data)]) 
 # 2nd arg makes the solution 3D, which enables warping in Paraview
+onp.savetxt('%s.txt' %file_name, sol_list[0])
 
 # Save the result in JSON file
 with open('%s.json' %file_name, 'w') as f:
