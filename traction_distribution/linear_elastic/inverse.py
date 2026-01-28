@@ -40,7 +40,7 @@ E = 1.0e3 # MPa
 ele_type = 'TET10'
 cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
 Lx, Ly, Lz = 1., 1., 0.05 # domain
-Nx, Ny, Nz = 60, 60, 2 # number of elements in x-dir, y-dir
+Nx, Ny, Nz = 40, 40, 2 # number of elements in x-dir, y-dir
 dim = 3
 # Meshes
 meshio_mesh = box_mesh_gmsh(Nx=Nx, Ny=Ny, Nz=Nz,
@@ -50,15 +50,15 @@ meshio_mesh = box_mesh_gmsh(Nx=Nx, Ny=Ny, Nz=Nz,
 mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
 # # Helper function for normalizing parameters
-# def normalize(val, vmin, vmax): # original params -> normalized params
-#     return (val - vmin) / (vmax - vmin)
+def normalize(val, vmin, vmax): # original params -> normalized params
+    return (val - vmin) / (vmax - vmin)
 
-# def unnormalize(val, vmin, vmax): # normalized params -> original params
-#     return val * (vmax - vmin) + vmin
+def unnormalize(val, vmin, vmax): # normalized params -> original params
+    return val * (vmax - vmin) + vmin
 
 # Traction Distribution
 def traction_true(point):
-    return 1e-2 * np.exp(-(np.power(point[0] - Lx/2., 2)) / (2.*(Lx/5.)**2))
+    return 1e-1 * np.exp(-(np.power(point[0] - Lx/2., 2)) / (2.*(Lx/5.)**2))
 
 # Weak forms
 class LinearElasticity(Problem):
@@ -163,15 +163,16 @@ def TV_reg(u, alpha=1, epsilon = 1e-6):
 # Objective Function
 # TODO: try TV regularization
 def J_total(params): # J(u(theta), theta)
+    params = normalize(params, vmin=0., vmax=1.0)
     # Solve w/ params
     sol_list = fwd_pred(params)
     # Data term
     u_difference = sol_measured - sol_list[0]
     # Regularization term
     alpha = 1. #1e-9
-    TV_reg_term = TV_reg(sol_list[0], alpha=alpha)
+    # TV_reg_term = TV_reg(sol_list[0], alpha=alpha)
     # Objective function
-    J = 0.5 * np.linalg.norm(u_difference)**2 + 0.5 * TV_reg_term
+    J = 0.5 * np.linalg.norm(u_difference)**2 * 1e5 # + 0.5 * TV_reg_term
     return J
 
 # Gradient of J
@@ -188,10 +189,16 @@ def output_sol(intermediate_result):
     sol_list = fwd_pred(intermediate_result.x)
     # Save vtu
     vtu_name = f'{file_name}/sol_{output_sol.counter:03d}.vtu'
+    
+    # Create (n, 3) shape array with zeros in the first and last columns
+    is_top = top(point)
+    zeros = np.zeros_like(intermediate_result.x)
+    traction = np.stack([zeros, intermediate_result.x, zeros], axis=1) * is_top
+    
     save_sol(problem.fes[0], 
              np.hstack((sol_list[0], np.zeros((len(sol_list[0]), 1)))), 
              os.path.join(file_dir, vtu_name), 
-             point_infos=[('traction', intermediate_result.x)])
+             point_infos=[('traction', traction)])
     print(f"Iteration:{output_sol.counter}")
     print(f"Obj:{intermediate_result.fun}")
     outputs.append(intermediate_result.fun)
@@ -202,6 +209,7 @@ output_sol.counter = 1
 
 # Initial guess
 rho_ini = 0.01 * np.ones(problem.fes[0].num_total_nodes) # (num_nodes,)
+rho_ini_norm = normalize(rho_ini, vmin=0., vmax=1.0)
 sol_list = fwd_pred(rho_ini)
 # Initial solution
 start_time = time.time() # Start timing
