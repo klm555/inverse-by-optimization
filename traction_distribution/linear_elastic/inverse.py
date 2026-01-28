@@ -57,10 +57,6 @@ def normalize(val, vmin, vmax): # original params -> normalized params
 def unnormalize(val, vmin, vmax): # normalized params -> original params
     return val * (vmax - vmin) + vmin
 
-# Traction Distribution
-def traction_true(point):
-    return 1e-2 * np.exp(-(np.power(point[0] - Lx/2., 2)) / (2.*(Lx/5.)**2))
-
 # Weak forms
 class LinearElasticity(Problem):
     def custom_init(self):
@@ -253,7 +249,7 @@ start_time = time.time() # Start timing
 
 # Optimization setup
 numConstraints = 1
-optimizationParams = {'maxiter':100, 'disp':True} # 'ftol':1e-4
+optimizationParams = {'maxiter':200, 'disp':True} # 'ftol':1e-4
 
 # Optimize
 results = minimize(J_total, jac=J_grad, 
