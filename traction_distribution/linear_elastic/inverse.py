@@ -28,7 +28,7 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/inverse'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'load1_noise-0'
+file_name = 'load1_noise-0_reg'
 
 # Load data (measured displacement)
 sol_measured = onp.loadtxt('load1_noise-0.txt') # (number of nodes, 3) in 3D
@@ -58,7 +58,7 @@ def unnormalize(val, vmin, vmax): # normalized params -> original params
 
 # Traction Distribution
 def traction_true(point):
-    return 1e-1 * np.exp(-(np.power(point[0] - Lx/2., 2)) / (2.*(Lx/5.)**2))
+    return 1e-2 * np.exp(-(np.power(point[0] - Lx/2., 2)) / (2.*(Lx/5.)**2))
 
 # Weak forms
 class LinearElasticity(Problem):
@@ -139,40 +139,39 @@ problem = LinearElasticity(mesh,
                            location_fns=location_fns)
 
 # AD wrapper : critical step that makes the problem solver differentiable
-fwd_pred = ad_wrapper(problem, solver_options={'petsc_solver': {}}, adjoint_solver_options={'petsc_solver': {}})
+solver_opts = {'petsc_solver': {'ksp_type': 'preonly',
+                                'pc_type': 'lu',
+                                'pc_factor_mat_solver_type': 'mumps'}}
+
+fwd_pred = ad_wrapper(problem, solver_options=solver_opts, adjoint_solver_options=solver_opts)
 
 # TV Loss
-def TV_reg(u, alpha=1, epsilon = 1e-6):
+def TV_reg(rho, points, alpha=1, epsilon = 1e-6):
     """
     Args:
         epsilon: small value to avoid division by zero
     """
-    # np.roll: shifts the entire image one pixel to the right
-    u_shift_x = np.roll(u, shift=1, axis=1)
-    u_shift_y = np.roll(u, shift=1, axis=0)
+    # Sort w.r.t x coords
+    idx_sorted = np.argsort(points[:, 0])
+    rho_sorted = rho[idx_sorted]
 
-    # Zero out the boundary (to prevent wrap-around effect of np.roll)
-    u_shift_x = u_shift_x.at[:, 0].set(0.)
-    u_shift_y = u_shift_y.at[0, :].set(0.)
-
-    grad_x = u - u_shift_x
-    grad_y = u - u_shift_y
-
-    return 0.5 * alpha * np.sum(np.sqrt(grad_x**2 + grad_y**2 + epsilon))
+    # Total Variation
+    grad_x = np.diff(rho_sorted)
+    return 0.5 * alpha * np.sum(np.sqrt(grad_x**2 + epsilon))
 
 # Objective Function
 # TODO: try TV regularization
 def J_total(params): # J(u(theta), theta)
-    params = normalize(params, vmin=0., vmax=1.0)
+    # params = unnormalize(params, vmin=0., vmax=1.0)
     # Solve w/ params
     sol_list = fwd_pred(params)
     # Data term
     u_difference = sol_measured - sol_list[0]
     # Regularization term
-    alpha = 1. #1e-9
-    # TV_reg_term = TV_reg(sol_list[0], alpha=alpha)
+    alpha = 1e-4 #1e-9
+    TV_reg_term = TV_reg(params, mesh.points, alpha=alpha)
     # Objective function
-    J = 0.5 * np.linalg.norm(u_difference)**2 * 1e5 # + 0.5 * TV_reg_term
+    J = 1e6 * 0.5 * np.linalg.norm(u_difference)**2 + 0.5 * TV_reg_term
     return J
 
 # Gradient of J
@@ -191,7 +190,9 @@ def output_sol(intermediate_result):
     vtu_name = f'{file_name}/sol_{output_sol.counter:03d}.vtu'
     
     # Create (n, 3) shape array with zeros in the first and last columns
-    is_top = top(point)
+    is_top = np.isclose(mesh.points[:, 1], np.max(mesh.points[:, 1]), atol=1e-5)
+    is_top = is_top[:, None] # Reshape to (N, 1) for broadcasting
+    
     zeros = np.zeros_like(intermediate_result.x)
     traction = np.stack([zeros, intermediate_result.x, zeros], axis=1) * is_top
     
@@ -209,7 +210,7 @@ output_sol.counter = 1
 
 # Initial guess
 rho_ini = 0.01 * np.ones(problem.fes[0].num_total_nodes) # (num_nodes,)
-rho_ini_norm = normalize(rho_ini, vmin=0., vmax=1.0)
+# rho_ini_norm = normalize(rho_ini, vmin=0., vmax=1.0)
 sol_list = fwd_pred(rho_ini)
 # Initial solution
 start_time = time.time() # Start timing
