@@ -30,7 +30,7 @@ file_name = 'load1_noise-0'
 E = 1.0e3 # MPa
 
 # Mesh info
-ele_type = 'TET10'
+ele_type = 'TET4'
 cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
 Lx, Ly, Lz = 1., 1., 0.05 # domain
 Nx, Ny, Nz = 40, 40, 2 # number of elements in x-dir, y-dir
@@ -44,7 +44,7 @@ mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
 # Traction Distribution
 def traction_true(point):
-    return 1e-1 * np.exp(-(np.power(point[0] - Lx/2., 2)) / (2.*(Lx/5.)**2))
+    return 1e-2 * np.exp(-(np.power(point[0] - Lx/2., 2)) / (2.*(Lx/5.)**2))
 
 class LinearElasticity(Problem):
     def get_tensor_map(self):
