@@ -3,7 +3,7 @@ from typing import List
 import json
 
 # Set JAX device (before importing jax)
-os.environ['JAX_PLATFORM_NAME'] = 'gpu' # or 'gpu'
+os.environ['JAX_PLATFORM_NAME'] = 'cpu' # or 'gpu'
 
 import jax
 import jax.numpy as np
@@ -27,9 +27,7 @@ os.makedirs(file_dir, exist_ok=True)
 file_name = 'load1_noise-0'
 
 # Material Properties
-# E = 1.0e3 
-mu = 3. # MPa
-lmbda = 148. # MPa
+E = 1.0e3 # MPa
 
 # Mesh info
 ele_type = 'TET10'
@@ -46,27 +44,20 @@ mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
 # Traction Distribution
 def traction_true(point):
-    return 1e-1 * np.exp(-(np.power(point[0] - Lx/2., 2)) / (2.*(Lx/5.)**2))
+    return 1e-2 * np.exp(-(np.power(point[0] - Lx/2., 2)) / (2.*(Lx/5.)**2))
 
-class HyperElasticity(Problem):
+class LinearElasticity(Problem):
     def get_tensor_map(self):
-        def psi(F):
-            kappa = lmbda + (2./3.) * mu
-            J = np.linalg.det(F)
-            Jinv = J**(-2./3.)
-            I1 = np.trace(F.T @ F)
-            energy = (mu/2.)*(Jinv*I1 - 3.) + (kappa/2.) * (J - 1.)**2.
-            return energy
-
-        P_fn = jax.grad(psi)
-
-        def first_PK_stress(u_grad):
-            I = np.eye(self.dim)
-            F = u_grad + I
-            P = P_fn(F)
-            return P
-        
-        return first_PK_stress
+        def stress(u_grad): # stress tensor
+            nu = 0.33
+            mu = E / (2.*(1+nu))
+            lmbda = E * nu / ((1+nu)*(1-2*nu))
+            # strain-displacement relation
+            epsilon = 0.5 * (u_grad + u_grad.T) # u_grad = 3x3
+            # stress-strain relation
+            sigma = lmbda * np.trace(epsilon) * np.eye(self.dim) + 2*mu*epsilon
+            return sigma
+        return stress
 
     def get_surface_maps(self):
         def surface_map(u, x):
@@ -97,15 +88,15 @@ dirichlet_bc_info = [[bottom]*3,
 location_fns = [top]
 
 # Instance of the problem
-problem = HyperElasticity(mesh,
-                          vec=3,
-                          dim=3,
-                          ele_type=ele_type,
-                          dirichlet_bc_info=dirichlet_bc_info,
-                          location_fns=location_fns)
+problem = LinearElasticity(mesh,
+                           vec=3,
+                           dim=3,
+                           ele_type=ele_type,
+                           dirichlet_bc_info=dirichlet_bc_info,
+                           location_fns=location_fns)
 
 # Solve
-sol_list = solver(problem, solver_options={'jax_solver': {}})
+sol_list = solver(problem, solver_options={'petsc_solver': {}})
 
 # Traction data for saving
 def compute_traction(point):

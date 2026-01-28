@@ -28,14 +28,13 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/inverse'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'load1_noise-0-inverse'
+file_name = 'load1_noise-0'
 
 # Load data (measured displacement)
 sol_measured = onp.loadtxt('load1_noise-0.txt') # (number of nodes, 3) in 3D
 
 # Material Properties 
-mu = 3. # MPa
-lmbda = 148. # MPa
+E = 1.0e3 # MPa
 
 # Mesh info
 ele_type = 'TET10'
@@ -59,32 +58,25 @@ mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
 # Traction Distribution
 def traction_true(point):
-    return np.exp(-(np.power(point[0] - Lx/2., 2)) / (2.*(Lx/5.)**2))
+    return 1e-2 * np.exp(-(np.power(point[0] - Lx/2., 2)) / (2.*(Lx/5.)**2))
 
 # Weak forms
-class HyperElasticity(Problem):
+class LinearElasticity(Problem):
     def custom_init(self):
         self.fe = self.fes[0]
             
     # Tensor
     def get_tensor_map(self):
-        def psi(F):
-            kappa = lmbda + (2./3.) * mu
-            J = np.linalg.det(F)
-            Jinv = J**(-2./3.)
-            I1 = np.trace(F.T @ F)
-            energy = (mu/2.)*(Jinv*I1 - 3.) + (kappa/2.) * (J - 1.)**2.
-            return energy
-
-        P_fn = jax.grad(psi)
-
-        def first_PK_stress(u_grad):
-            I = np.eye(self.dim)
-            F = u_grad + I
-            P = P_fn(F)
-            return P
-        
-        return first_PK_stress
+        def stress(u_grad): # stress tensor
+            nu = 0.33
+            mu = E / (2.*(1+nu))
+            lmbda = E * nu / ((1+nu)*(1-2*nu))
+            # strain-displacement relation
+            epsilon = 0.5 * (u_grad + u_grad.T) # u_grad = 3x3
+            # stress-strain relation
+            sigma = lmbda * np.trace(epsilon) * np.eye(self.dim) + 2*mu*epsilon
+            return sigma
+        return stress
 
     def get_surface_maps(self):
         def surface_map(u, x, load_value):
@@ -139,7 +131,7 @@ dirichlet_bc_info = [[bottom]*3,
 location_fns = [top]
 
 # Instance of the problem
-problem = HyperElasticity(mesh,
+problem = LinearElasticity(mesh,
                            vec=3,
                            dim=3,
                            ele_type=ele_type,
@@ -147,7 +139,7 @@ problem = HyperElasticity(mesh,
                            location_fns=location_fns)
 
 # AD wrapper : critical step that makes the problem solver differentiable
-fwd_pred = ad_wrapper(problem, solver_options={'umfpack_solver': {}}, adjoint_solver_options={'umfpack_solver': {}})
+fwd_pred = ad_wrapper(problem, solver_options={'petsc_solver': {}}, adjoint_solver_options={'petsc_solver': {}})
 
 # TV Loss
 def TV_reg(u, alpha=1, epsilon = 1e-6):
