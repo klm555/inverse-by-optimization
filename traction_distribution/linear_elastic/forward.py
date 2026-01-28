@@ -24,7 +24,7 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/forward'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'load1_noise-0'
+file_name = 'load2_noise-0'
 
 # Material Properties
 E = 1.0e3 # MPa
@@ -44,7 +44,8 @@ mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
 # Traction Distribution
 def traction_true(point):
-    return 1e-2 * np.exp(-(np.power(point[0] - Lx/2., 2)) / (2.*(Lx/5.)**2))
+    # return 1e-2 * np.exp(-(np.power(point[0] - Lx/2., 2)) / (2.*(Lx/5.)**2)) # Load 1
+    return np.where(point[0] >= Lx/2., 1e-2, 0.0) # Load 2
 
 class LinearElasticity(Problem):
     def get_tensor_map(self):
