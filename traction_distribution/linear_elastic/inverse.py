@@ -1,6 +1,7 @@
 import os
 import time
 from typing import List
+import itertools
 
 # Set JAX device (before importing jax)
 os.environ['JAX_PLATFORM_NAME'] = 'cpu' # or 'gpu'
@@ -28,7 +29,7 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/inverse'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'load1_noise-0_reg'
+file_name = 'load1_noise-0_reg_small-alpha'
 
 # Load data (measured displacement)
 sol_measured = onp.loadtxt('load1_noise-0.txt') # (number of nodes, 3) in 3D
@@ -37,7 +38,7 @@ sol_measured = onp.loadtxt('load1_noise-0.txt') # (number of nodes, 3) in 3D
 E = 1.0e3 # MPa
 
 # Mesh info
-ele_type = 'TET10'
+ele_type = 'TET4'
 cell_type = get_meshio_cell_type(ele_type) # convert 'QUAD4' to 'quad' in meshio
 Lx, Ly, Lz = 1., 1., 0.05 # domain
 Nx, Ny, Nz = 40, 40, 2 # number of elements in x-dir, y-dir
@@ -145,19 +146,48 @@ solver_opts = {'petsc_solver': {'ksp_type': 'preonly',
 
 fwd_pred = ad_wrapper(problem, solver_options=solver_opts, adjoint_solver_options=solver_opts)
 
+# Extract mesh edges for TV regularization
+def get_mesh_edges(cells):
+    """
+    Extract unique edges(a pair of nodes) from mesh cells.
+    """
+    cells = onp.array(cells) # Ensure numpy array
+    num_nodes_per_cell = cells.shape[1]
+    
+    # Generate all possible node pairs within a single element
+    pairs = list(itertools.combinations(range(num_nodes_per_cell), 2))
+    
+    edges_list = []
+    for i, j in pairs:
+        edges_list.append(cells[:, [i, j]])
+        
+    # Combine all edges into one array
+    all_edges = onp.vstack(edges_list)
+    
+    # 정렬 후 중복 제거 (방향성 무시: 1-2와 2-1은 같음)
+    all_edges.sort(axis=1)
+    unique_edges = onp.unique(all_edges, axis=0)
+    
+    return unique_edges
+
+mesh_edges = get_mesh_edges(problem.fes[0].cells)
+# JAX 장치로 이동 (최적화 루프 내에서 사용하기 위함)
+mesh_edges_jax = jax.device_put(mesh_edges)
+
 # TV Loss
-def TV_reg(rho, points, alpha=1, epsilon = 1e-6):
+def TV_reg(rho, edges, alpha=1., epsilon = 1e-6):
     """
     Args:
+        edges: (num_edges, 2) a pair of node indices representing an edge
         epsilon: small value to avoid division by zero
     """
-    # Sort w.r.t x coords
-    idx_sorted = np.argsort(points[:, 0])
-    rho_sorted = rho[idx_sorted]
+    # Fetch parameter values at the edge nodes
+    rho_i = rho[edges[:, 0]]
+    rho_j = rho[edges[:, 1]]
 
-    # Total Variation
-    grad_x = np.diff(rho_sorted)
-    return 0.5 * alpha * np.sum(np.sqrt(grad_x**2 + epsilon))
+    # Difference between two adjacent nodes
+    diff = rho_i - rho_j
+    return alpha * np.sum(np.sqrt(diff**2 + epsilon))
 
 # Objective Function
 # TODO: try TV regularization
@@ -169,7 +199,7 @@ def J_total(params): # J(u(theta), theta)
     u_difference = sol_measured - sol_list[0]
     # Regularization term
     alpha = 1e-4 #1e-9
-    TV_reg_term = TV_reg(params, mesh.points, alpha=alpha)
+    TV_reg_term = TV_reg(params, mesh_edges_jax, alpha=alpha)
     # Objective function
     J = 1e6 * 0.5 * np.linalg.norm(u_difference)**2 + 0.5 * TV_reg_term
     return J
