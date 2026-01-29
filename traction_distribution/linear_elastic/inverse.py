@@ -29,10 +29,10 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/inverse'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'load1_noise-0_reg_small-alpha'
+file_name = 'load2_noise-0_reg_small-alpha'
 
 # Load data (measured displacement)
-sol_measured = onp.loadtxt('load1_noise-0.txt') # (number of nodes, 3) in 3D
+sol_measured = onp.loadtxt('load2_noise-0.txt') # (number of nodes, 3) in 3D
 
 # Material Properties 
 E = 1.0e3 # MPa
@@ -194,7 +194,7 @@ def J_total(params): # J(u(theta), theta)
     # Data term
     u_difference = sol_measured - sol_list[0]
     # Regularization term
-    alpha = 1e-4 #1e-9
+    alpha = 1e-5 #1e-9
     TV_reg_term = TV_reg(params, mesh_edges_jax, alpha=alpha)
     # Objective function
     J = 1e6 * 0.5 * np.linalg.norm(u_difference)**2 + 0.5 * TV_reg_term
