@@ -29,7 +29,7 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/inverse'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'load2_noise-0_reg_three-midpts'
+file_name = 'load2_noise-0_reg_all-vertical-midpts'
 
 # Load data (measured displacement)
 sol_measured = onp.loadtxt('load2_noise-0.txt') # (number of nodes, 3) in 3D
@@ -51,20 +51,15 @@ meshio_mesh = box_mesh_gmsh(Nx=Nx, Ny=Ny, Nz=Nz,
 mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
 
 # Target points and their indices for calculating data mismatch
-# Front surface (z = Lz), Middle height (y = Ly/2)
-# Horizontally distributed (x = 0.25*Lx, 0.5*Lx, 0.75*Lx)
-target_points = onp.array([[Lx * 0.25, Ly * 0.5, Lz],
-                           [Lx * 0.50, Ly * 0.5, Lz],
-                           [Lx * 0.75, Ly * 0.5, Lz]])
+# Front surface (z = Lz)
+target_z_mask = onp.isclose(mesh.points[:, 2], Lz, atol=1e-5)
+target_x_mask = onp.isclose(mesh.points[:, 0], 0.25 * Lx, atol=1e-5) |\
+                onp.isclose(mesh.points[:, 0], 0.5 * Lx, atol=1e-5) |\
+                onp.isclose(mesh.points[:, 0], 0.75 * Lx, atol=1e-5)
+target_y_mask = (mesh.points[:, 1] >= Ly/4.) & (mesh.points[:, 1] <= 3.*Ly/4.)
 
-target_idx = []
-for point in target_points:
-    # 전체 노드와의 거리 계산
-    dists = onp.linalg.norm(mesh.points - point, axis=1)
-    # 가장 가까운 인덱스 추가
-    target_idx.append(onp.argmin(dists))
-
-target_idx = onp.array(target_idx)
+target_mask = target_x_mask & target_y_mask & target_z_mask
+target_idx = onp.where(target_mask)[0]
 
 # # Helper function for normalizing parameters
 def normalize(val, vmin, vmax): # original params -> normalized params
