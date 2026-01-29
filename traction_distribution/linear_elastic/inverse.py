@@ -29,7 +29,7 @@ print('Devices:', jax.devices())
 # Save setup
 file_dir = 'data/inverse'
 os.makedirs(file_dir, exist_ok=True)
-file_name = 'load2_noise-0_reg_small-alpha'
+file_name = 'load2_noise-0_reg_three-midpts'
 
 # Load data (measured displacement)
 sol_measured = onp.loadtxt('load2_noise-0.txt') # (number of nodes, 3) in 3D
@@ -49,6 +49,22 @@ meshio_mesh = box_mesh_gmsh(Nx=Nx, Ny=Ny, Nz=Nz,
                             data_dir=file_dir, ele_type=ele_type)
 # Input mesh info into Mesh class
 mesh = Mesh(meshio_mesh.points, meshio_mesh.cells_dict[cell_type])
+
+# Target points and their indices for calculating data mismatch
+# Front surface (z = Lz), Middle height (y = Ly/2)
+# Horizontally distributed (x = 0.25*Lx, 0.5*Lx, 0.75*Lx)
+target_points = onp.array([[Lx * 0.25, Ly * 0.5, Lz],
+                           [Lx * 0.50, Ly * 0.5, Lz],
+                           [Lx * 0.75, Ly * 0.5, Lz]])
+
+target_idx = []
+for point in target_points:
+    # 전체 노드와의 거리 계산
+    dists = onp.linalg.norm(mesh.points - point, axis=1)
+    # 가장 가까운 인덱스 추가
+    target_idx.append(onp.argmin(dists))
+
+target_idx = onp.array(target_idx)
 
 # # Helper function for normalizing parameters
 def normalize(val, vmin, vmax): # original params -> normalized params
@@ -192,7 +208,7 @@ def J_total(params): # J(u(theta), theta)
     # Solve w/ params
     sol_list = fwd_pred(params)
     # Data term
-    u_difference = sol_measured - sol_list[0]
+    u_difference = sol_measured[target_idx, 1] - sol_list[0][target_idx, 1]
     # Regularization term
     alpha = 1e-5 #1e-9
     TV_reg_term = TV_reg(params, mesh_edges_jax, alpha=alpha)
